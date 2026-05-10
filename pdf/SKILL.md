@@ -1,6 +1,6 @@
 ---
 name: pdf
-description: Work with PDF files through a bundled C# file-app helper. Use when Codex needs to inspect PDF metadata, extract text, copy/remove/split/merge pages, rotate pages, add text watermarks or stamps, compress, encrypt/decrypt, read/write metadata, list bookmarks, convert images into a PDF, or weave pages from one PDF into another.
+description: Work with PDF files through bundled helpers. Use when Codex needs to inspect PDF metadata, extract text, copy/remove/split/merge pages, rotate pages, add text watermarks or stamps, compress, encrypt/decrypt, read/write metadata, list bookmarks, convert images into a PDF, extract embedded images or render pages as PNG, or weave pages from one PDF into another.
 ---
 
 # PDF
@@ -32,8 +32,10 @@ Prefer absolute paths for inputs and outputs when working outside the current di
 | `img2pdf` | Convert image files into PDF pages. | `-i <image1> [image2...] -o <pdf>` |
 | `weave` | Insert donor PDF pages into a main PDF after mapped main pages. | `-i <main.pdf> --donor <donor.pdf> --mapping <pages> -o <pdf>` |
 | `stamp` | Add text such as page numbers, headers, or footers. | `-i <pdf> --text <template> -o <pdf>` |
+| `images` | Extract embedded images from a PDF using PyMuPDF. | `-i <pdf> -o <dir>` |
+| `render` | Render PDF pages as PNG images at specified DPI. | `-i <pdf> -o <dir>` |
 
-Unsupported by this helper: `images`, `pdf2img`, and `ocr`. They fail intentionally because embedded-image extraction, true page rendering, and OCR need dedicated rendering/OCR tools. Use `text` only for PDFs that already contain extractable text.
+Unsupported by this helper: `pdf2img` and `ocr`. They fail intentionally because true page rendering (pdf2img) and OCR need dedicated rendering/OCR tools. Use `images` to extract embedded images or `render` to render pages as PNG. Use `text` only for PDFs that already contain extractable text.
 
 ## Examples
 
@@ -71,6 +73,12 @@ dotnet run --file <skill-root>/scripts/pdf.cs -- metadata -i input.pdf --title "
 
 # Convert images to a PDF.
 dotnet run --file <skill-root>/scripts/pdf.cs -- img2pdf -i page1.png page2.jpg -o images.pdf
+
+# Extract embedded images from a PDF.
+uv run python <skill-root>/scripts/extract_images.py images -i input.pdf -o images_dir
+
+# Render PDF pages as PNG at 150 DPI.
+uv run python <skill-root>/scripts/extract_images.py render -i input.pdf -o pages_dir --dpi 150
 ```
 
 ## Option Notes
@@ -81,6 +89,7 @@ dotnet run --file <skill-root>/scripts/pdf.cs -- img2pdf -i page1.png page2.jpg 
 - `compress --level` accepts `low`, `medium`, or `max`.
 - `stamp --text` supports `{n}` for current page, `{N}` for total pages, and `{d}` for the current date.
 - `metadata` without write fields reads metadata; with `--title`, `--author`, `--subject`, or `--keywords`, it writes a new PDF.
+- `extract_images.py` requires `uv run python` (not bare `python`) since the environment is managed by uv.
 
 ## Validation
 

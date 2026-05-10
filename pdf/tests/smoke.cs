@@ -12,7 +12,8 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
 var skillDir = FindSkillRoot();
-var pdfCs = Path.Combine(skillDir, "scripts", "pdf.cs");
+var scriptCs = Path.Combine(skillDir, "scripts", "pdf.cs");
+var extractImagesPy = Path.Combine(skillDir, "scripts", "extract_images.py");
 var testDir = Path.Combine(Path.GetTempPath(), "pdf_smoke_" + Guid.NewGuid().ToString("N")[..8]);
 Directory.CreateDirectory(testDir);
 
@@ -136,9 +137,23 @@ try
 
     Pass("unsupported commands fail honestly", () =>
     {
-        RunTool("images", "-i", testPdf).RequireFailure("not supported");
         RunTool("pdf2img", "-i", testPdf, "--output", Path.Combine(testDir, "images")).RequireFailure("not supported");
         RunTool("ocr", "-i", testPdf, "--output", Path.Combine(testDir, "ocr.txt")).RequireFailure("not supported");
+    }, ref passed);
+
+    Pass("images extract", () =>
+    {
+        var imgDir = Path.Combine(testDir, "imgs");
+        Directory.CreateDirectory(imgDir);
+        RunPy("images", "-i", testPdf, "-o", imgDir).RequireSuccess();
+    }, ref passed);
+
+    Pass("render pages", () =>
+    {
+        var renderDir = Path.Combine(testDir, "rendered");
+        Directory.CreateDirectory(renderDir);
+        RunPy("render", "-i", testPdf, "-o", renderDir).RequireSuccess();
+        Require(Directory.GetFiles(renderDir, "*.png").Length == 3, "render should produce 3 PNG files");
     }, ref passed);
 
     Pass("invalid arguments fail clearly", () =>
@@ -174,7 +189,7 @@ CommandResult RunTool(params string[] arguments)
     };
     startInfo.ArgumentList.Add("run");
     startInfo.ArgumentList.Add("--file");
-    startInfo.ArgumentList.Add(pdfCs);
+    startInfo.ArgumentList.Add(scriptCs);
     startInfo.ArgumentList.Add("--");
     foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
 
@@ -185,6 +200,26 @@ CommandResult RunTool(params string[] arguments)
     return new CommandResult(process.ExitCode, stdout, stderr, arguments);
 }
 
+CommandResult RunPy(params string[] arguments)
+{
+    var startInfo = new ProcessStartInfo("uv")
+    {
+        WorkingDirectory = skillDir,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        UseShellExecute = false
+    };
+    startInfo.ArgumentList.Add("run");
+    startInfo.ArgumentList.Add("python");
+    startInfo.ArgumentList.Add(extractImagesPy);
+    foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
+
+    using var process = Process.Start(startInfo)!;
+    var stdout = process.StandardOutput.ReadToEnd();
+    var stderr = process.StandardError.ReadToEnd();
+    process.WaitForExit();
+    return new CommandResult(process.ExitCode, stdout, stderr, arguments);
+}
 void CreatePdf(string path, int pages, string label)
 {
     using var writer = new PdfWriter(path);
