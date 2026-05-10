@@ -123,11 +123,6 @@ static string CreateSkill(string name, string outputPath, IReadOnlyList<string> 
     {
         var folder = Path.Combine(skillPath, resource);
         Directory.CreateDirectory(folder);
-        var gitKeep = Path.Combine(folder, ".gitkeep");
-        if (force || !File.Exists(gitKeep))
-        {
-            File.WriteAllText(gitKeep, string.Empty);
-        }
     }
 
     return skillPath;

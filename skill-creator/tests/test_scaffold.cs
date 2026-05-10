@@ -14,8 +14,8 @@ try
     Require(result.StdOut.Contains("Created skill at", StringComparison.Ordinal), result.ToDebugString());
     var skillMarkdownPath = Path.Combine(outputRoot, "demo-skill", "SKILL.md");
     Require(File.Exists(skillMarkdownPath), "Missing SKILL.md");
-    Require(File.Exists(Path.Combine(outputRoot, "demo-skill", "scripts", ".gitkeep")), "Missing scripts/.gitkeep");
-    Require(File.Exists(Path.Combine(outputRoot, "demo-skill", "references", ".gitkeep")), "Missing references/.gitkeep");
+    Require(File.Exists(Path.Combine(outputRoot, "demo-skill", "scripts", ".gitkeep")) == false, "scaffold should not create scripts/.gitkeep");
+    Require(File.Exists(Path.Combine(outputRoot, "demo-skill", "references", ".gitkeep")) == false, "scaffold should not create references/.gitkeep");
 
     var skillMarkdown = File.ReadAllText(skillMarkdownPath);
     Require(skillMarkdown.Contains("## Common Commands Or Procedure", StringComparison.Ordinal), "Missing operational commands section");
