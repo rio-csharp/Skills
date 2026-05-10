@@ -79,6 +79,8 @@ Good `SKILL.md` bodies usually include:
 - Safety or permission notes when relevant.
 - Output expectations only when the task needs a consistent format.
 
+For weaker-model authors, do not leave body structure open-ended. Give them a fixed section order and reject extra sections unless they carry their weight.
+
 Avoid:
 
 - A long "what this skill is" essay.
@@ -138,3 +140,14 @@ Never create skills that hide their purpose, exfiltrate data, bypass permissions
 - Scripts have been smoke-tested.
 - Validation passes.
 - At least one realistic prompt has been tried or written down for the user.
+
+## Anti-Patterns To Reject
+
+Reject or rewrite drafts that show these patterns:
+
+- The body contains the real trigger logic while `description` stays generic.
+- `SKILL.md` duplicates large reference material instead of routing to it.
+- The folder name and frontmatter `name` do not match.
+- Scripts use a random runtime with no justification.
+- The only test is a large integration script that mutates real data.
+- The skill reads like a transcript of how it was created instead of a guide for future agents.

@@ -28,6 +28,13 @@ For each example prompt, imagine doing the task from scratch and identify repeat
 
 Do not create a folder just because the template allows it.
 
+For weaker models, make the choice explicit:
+
+- Need deterministic behavior or repeated local commands: create a C# file-based script.
+- Need large factual reference material: create a reference file.
+- Need output materials to copy or modify: create an asset.
+- Need trigger logic or routing: keep it in `SKILL.md`.
+
 ## 3. Scaffold
 
 Use the local scaffold script:
@@ -47,6 +54,13 @@ If creating a skill for the current Codex environment and the user did not speci
 ## 4. Draft
 
 Write frontmatter first. The description should answer: "Would an agent looking only at this line know when to open the skill?"
+
+If the authoring model is weak, force this sequence:
+
+1. Write `name`.
+2. Write `description` from the fill-in formula.
+3. Write the body from the default skeleton.
+4. Only then add references or scripts.
 
 Then write the body:
 
@@ -95,6 +109,12 @@ Fix errors. Review warnings and either address them or keep them intentionally.
 
 For a small skill, run one realistic manual task.
 
+For weaker-model-authored skills, require this minimum test stack:
+
+- One smoke test that exercises the most important path.
+- One near-miss trigger example.
+- One explicit check for the highest-risk pitfall in the skill.
+
 For a complex or reusable skill, create a tiny eval set:
 
 - Two prompts that should trigger.
@@ -114,6 +134,8 @@ When a test fails:
 - Remove instructions that cause wasted work.
 
 Stop when the skill is clear, validated, and good enough for the user's intended use.
+
+If the draft still feels vague, do not ask the weaker model to "polish it." Replace vague sections with concrete templates and rerun validation.
 
 ## 9. Package
 

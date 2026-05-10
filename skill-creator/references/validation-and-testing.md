@@ -41,6 +41,8 @@ Use one realistic prompt. Follow the skill as written, not from memory. Note:
 - Did scripts run successfully?
 - Was validation possible?
 
+For weaker-model-authored skills, a smoke test is mandatory whenever the skill includes scripts or high-risk workflow instructions.
+
 ## Forward Testing
 
 Use forward testing when the skill is complex, high leverage, or likely to be reused.
@@ -102,3 +104,14 @@ dotnet run --file <this-skill>/tests/test_scaffold.cs
 dotnet run --file <this-skill>/tests/test_validate.cs
 dotnet run --file <this-skill>/tests/test_package.cs
 ```
+
+## Review Checklist For Weak-Model Drafts
+
+Run this review before accepting a draft created by a weaker model:
+
+- Does the description carry the trigger logic by itself?
+- Is the main `SKILL.md` under control, or did it turn into a giant reference dump?
+- If there are scripts, are they C# file-based apps by default?
+- Is there a smoke test that proves the main path works?
+- Are high-risk pitfalls called out explicitly?
+- Does the skill generalize beyond the exact example prompts?

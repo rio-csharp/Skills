@@ -7,6 +7,8 @@ description: Create, audit, refactor, evaluate, optimize, and package Agent Skil
 
 Create skills as small, discoverable, tested capability packages. Treat `SKILL.md` as the entrypoint and navigation map; move deep details into referenced files that are loaded only when needed.
 
+Assume the skill author may be a weaker model. Do not rely on taste or abstraction alone when the task benefits from a concrete template, fixed checklist, or explicit default.
+
 ## Start Here
 
 First determine the user's intent and where they are in the lifecycle:
@@ -31,6 +33,18 @@ When the task is ordinary skill creation or editing, read [references/workflow.m
 7. Package or hand off when the user is satisfied.
 
 Skip steps only when they are clearly irrelevant. For example, a tiny style skill may not need scripts, while a file transformation skill should almost always have executable validation.
+
+## Weak-Model Mode
+
+When the skill is being created by a weaker model, reduce freedom and increase structure:
+
+- Give a fixed frontmatter formula instead of asking it to "write a good description."
+- Give a fixed `SKILL.md` section template instead of asking for an ideal structure.
+- Default scripts to C# file-based apps unless there is a strong reason not to.
+- Require one light smoke test before any heavier integration test.
+- Use explicit anti-pattern checks before accepting the draft.
+
+When in doubt, prefer a slightly rigid but correct scaffold over an elegant but underspecified draft.
 
 ## 1. Capture Concrete Use Cases
 
@@ -90,6 +104,18 @@ Rules:
 
 Make descriptions specific and trigger-aware: include what the skill does, when to use it, key file types, domains, task names, and near-synonyms users might say. Do not make the description so broad that it steals unrelated tasks.
 
+For weaker models, use this fill-in formula:
+
+```text
+Do [specific job] for [domain/files/system]. Use when the user asks to [task A], [task B], [task C], mentions [tool/file type/domain phrase], or needs [specialized outcome].
+```
+
+Before accepting the description, explicitly check:
+
+- Could the skill trigger without reading the body?
+- Would it over-trigger on adjacent but wrong tasks?
+- Did the draft accidentally put trigger guidance only in the body?
+
 Platform-specific fields such as `allowed-tools`, `disable-model-invocation`, `user-invocable`, `model`, `effort`, `context`, `agent`, `paths`, or dynamic context belong only when the target runtime supports them. Check [references/platform-notes.md](references/platform-notes.md) before adding them.
 
 ## 4. Write The Body
@@ -113,6 +139,40 @@ Avoid:
 - Hidden side effects or surprising actions.
 
 For fragile tasks, reduce degrees of freedom with scripts, fixed templates, or explicit checklists. For creative or context-dependent tasks, give principles and examples rather than rigid recipes.
+
+For weaker models, use this default body skeleton and fill it in rather than improvising:
+
+```markdown
+# Skill Title
+
+One-sentence purpose.
+
+## Start Here
+
+1. Identify the task.
+2. Pick the right command/reference.
+3. Execute or explain.
+
+## Workflow
+
+1. Capture required inputs.
+2. Read the exact reference or run the exact script.
+3. Produce the result.
+4. Validate the result.
+
+## Resources
+
+- `scripts/...`: run when ...
+- `references/...`: read when ...
+- `assets/...`: use when ...
+
+## Pitfalls
+
+- Do not ...
+- Prefer ...
+```
+
+If the draft starts adding API tables, giant examples, or trigger explanations here, move them into references or frontmatter.
 
 ## 5. Add Resources
 
@@ -139,6 +199,8 @@ Assets should:
 - Be files the agent copies, modifies, or uses in final outputs.
 - Stay out of context unless inspection is necessary.
 
+When a weaker model is authoring the skill, do not let it choose script runtime freely. Make it justify any non-C# script with a concrete platform reason.
+
 ## 6. Validate
 
 Run the local validator after any meaningful edit:
@@ -150,6 +212,15 @@ dotnet run --file <this-skill>/scripts/validate.cs -- <path-to-skill-folder>
 Fix validation failures before packaging. Treat warnings as design prompts: they may be acceptable, but should be intentional.
 
 For scripts, run representative script commands. For reference-heavy skills, verify every linked file exists and can be reached from `SKILL.md`.
+
+Before accepting a weak-model draft, also ask these explicit review questions:
+
+- Is the folder name identical to frontmatter `name`?
+- Is the main trigger logic in `description` rather than a body section?
+- Is `SKILL.md` a guide, not a giant reference dump?
+- If scripts exist, are they C# file-based apps by default?
+- Is there at least one smoke test?
+- Are there any heavy integration tests that should be split from smoke tests?
 
 ## 7. Test And Iterate
 
@@ -164,6 +235,14 @@ When improving from feedback:
 - Add scripts when multiple test runs independently reinvent the same code.
 - Remove instructions that increase token cost without changing behavior.
 - Re-run the relevant tests after changes.
+
+Use these anti-patterns as hard warnings for weaker-model output:
+
+- Trigger conditions live mostly under `## When to Use This Skill`.
+- Main `SKILL.md` is acting as the full API manual.
+- Scripts use an arbitrary runtime without justification.
+- Only heavy end-to-end tests exist; no light smoke test exists.
+- The skill works only for the example prompts and has no general rule behind it.
 
 ## Package
 
