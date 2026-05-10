@@ -1,162 +1,92 @@
 ---
 name: pdf
-description: Manipulate PDF files — extract text/images/pages, merge, split, rotate, watermark, compress, encrypt, convert images, OCR, and more. Use when the user asks to work with PDF files: extracting, merging, splitting, converting, annotating, signing, or any PDF operation. Supports Windows.
+description: Work with PDF files through a bundled C# file-app helper. Use when Codex needs to inspect PDF metadata, extract text, copy/remove/split/merge pages, rotate pages, add text watermarks or stamps, compress, encrypt/decrypt, read/write metadata, list bookmarks, convert images into a PDF, or weave pages from one PDF into another.
 ---
 
-# PDF Skill
+# PDF
 
-All PDF operations go through the Python script. PyMuPDF (via `pymupdf`) powers most operations; `pdfplumber` handles layout-aware text extraction.
+Use the C# helper for deterministic PDF operations:
 
-**Script:** `.venv/Scripts/python.exe "<skill-base>/scripts/pdf.py" <command> [options]`
+```bash
+dotnet run --file <skill-root>/scripts/pdf.cs -- <command> [options]
+```
 
-The script auto-creates a venv at `D:\Repos\Skills\.venv` on first run. If the venv exists but libraries are missing, run: `.venv/Scripts/python.exe -m pip install pymupdf pdfplumber`
+Prefer absolute paths for inputs and outputs when working outside the current directory. Do not overwrite the user's original PDF unless they explicitly ask for in-place replacement.
 
-## Core Commands
+## Commands
 
-| Command | Description |
-|---------|-------------|
-| `info` | Show page count, metadata, file size |
-| `text` | Extract text (plain or layout-aware via pdfplumber) |
-| `images` | Extract embedded images |
-| `pages` | Extract specific pages or page ranges |
-| `merge` | Merge multiple PDFs into one |
-| `split` | Split PDF by page ranges or bookmarks |
-| `rotate` | Rotate pages by angle |
-| `watermark` | Add text or image watermark |
-| `compress` | Compress PDF and reduce file size |
-| `encrypt` | Add password protection |
-| `decrypt` | Remove password protection |
-| `metadata` | Read or write PDF metadata |
-| `bookmarks` | List, add, or edit bookmarks (outline) |
-| `pdf2img` | Convert PDF pages to images |
-| `img2pdf` | Convert images to PDF |
-| `ocr` | Run OCR on PDF pages |
-| `weave` | Insert pages from one PDF into another |
-| `stamp` | Add text stamp (header/footer/page numbers) |
+| Command | Purpose | Required options |
+|---|---|---|
+| `info` | Print page count, PDF version, metadata, and size; add `-o <json>` to write JSON. | `-i <pdf>` |
+| `text` | Extract embedded text with PdfPig. This is not OCR. | `-i <pdf>` |
+| `pages` | Copy or remove selected pages. | `-i <pdf> --range <range> -o <pdf>` |
+| `merge` | Merge PDFs in order. | `-i <pdf1> <pdf2...> -o <pdf>` |
+| `split` | Extract a page range into a new PDF under an output directory. | `-i <pdf> --range <range> -o <dir>` |
+| `rotate` | Rotate selected pages by 90, 180, or 270 degrees. | `-i <pdf> --angle <deg> -o <pdf>` |
+| `watermark` | Add large text watermark to every page. | `-i <pdf> --text <text> -o <pdf>` |
+| `compress` | Rewrite PDF with iText compression. | `-i <pdf> -o <pdf>` |
+| `encrypt` | Add password protection. | `-i <pdf> --password <password> -o <pdf>` |
+| `decrypt` | Remove password protection when the password is known. | `-i <pdf> --password <password> -o <pdf>` |
+| `metadata` | Read metadata, or write title/author/subject/keywords to a new PDF. | `-i <pdf>` |
+| `bookmarks` | List top-level bookmarks. | `-i <pdf> --list` |
+| `img2pdf` | Convert image files into PDF pages. | `-i <image1> [image2...] -o <pdf>` |
+| `weave` | Insert donor PDF pages into a main PDF after mapped main pages. | `-i <main.pdf> --donor <donor.pdf> --mapping <pages> -o <pdf>` |
+| `stamp` | Add text such as page numbers, headers, or footers. | `-i <pdf> --text <template> -o <pdf>` |
 
-## Common Options
-
-- `--input`, `-i`: Input PDF path (required for most commands)
-- `--output`, `-o`: Output path (default: auto-generated with `_out` suffix)
-- `--password`, `-p`: Password for encrypted PDFs
+Unsupported by this helper: `images`, `pdf2img`, and `ocr`. They fail intentionally because embedded-image extraction, true page rendering, and OCR need dedicated rendering/OCR tools. Use `text` only for PDFs that already contain extractable text.
 
 ## Examples
 
 ```bash
-# Extract text from PDF
-python pdf.py text -i document.pdf
+# Inspect a PDF, or write JSON with -o.
+dotnet run --file <skill-root>/scripts/pdf.cs -- info -i input.pdf
+dotnet run --file <skill-root>/scripts/pdf.cs -- info -i input.pdf -o info.json
 
-# Extract text preserving layout (pdfplumber)
-python pdf.py text -i document.pdf --layout
+# Extract embedded text.
+dotnet run --file <skill-root>/scripts/pdf.cs -- text -i input.pdf -o text.txt
 
-# Extract a specific page range
-python pdf.py pages -i document.pdf --range 1-5 -o pages_1_5.pdf
+# Extract pages 1-3 and 5.
+dotnet run --file <skill-root>/scripts/pdf.cs -- pages -i input.pdf --range "1-3 5" -o excerpt.pdf
 
-# Merge multiple PDFs
-python pdf.py merge -i doc1.pdf doc2.pdf doc3.pdf -o merged.pdf
+# Remove page 1.
+dotnet run --file <skill-root>/scripts/pdf.cs -- pages -i input.pdf --range 1 --mode remove -o without-first-page.pdf
 
-# Split at bookmark level 1 headings
-python pdf.py split -i document.pdf --bookmarks -o split_dir/
+# Merge PDFs in order.
+dotnet run --file <skill-root>/scripts/pdf.cs -- merge -i first.pdf second.pdf third.pdf -o merged.pdf
 
-# Compress with maximum reduction
-python pdf.py compress -i large.pdf --level=max -o small.pdf
+# Split selected pages into an output directory.
+dotnet run --file <skill-root>/scripts/pdf.cs -- split -i input.pdf --range "2-4" -o split-output
 
-# Add text watermark
-python pdf.py watermark -i document.pdf --text "CONFIDENTIAL" --opacity 0.3 -o marked.pdf
+# Rotate all pages.
+dotnet run --file <skill-root>/scripts/pdf.cs -- rotate -i input.pdf --angle 90 -o rotated.pdf
 
-# Encrypt with password
-python pdf.py encrypt -i document.pdf --password secret123 -o secured.pdf
+# Add a watermark.
+dotnet run --file <skill-root>/scripts/pdf.cs -- watermark -i input.pdf --text "CONFIDENTIAL" -o watermarked.pdf
 
-# Convert to images at 300 DPI
-python pdf.py pdf2img -i document.pdf --dpi 300 --output images/
+# Add page numbers.
+dotnet run --file <skill-root>/scripts/pdf.cs -- stamp -i input.pdf --text "Page {n} of {N}" --pos footer -o stamped.pdf
 
-# Run OCR on scanned PDF
-python pdf.py ocr -i scanned.pdf --lang eng --output text.txt
+# Set metadata.
+dotnet run --file <skill-root>/scripts/pdf.cs -- metadata -i input.pdf --title "Report" --author "Team" -o with-metadata.pdf
+
+# Convert images to a PDF.
+dotnet run --file <skill-root>/scripts/pdf.cs -- img2pdf -i page1.png page2.jpg -o images.pdf
 ```
 
-## Operations Reference
+## Option Notes
 
-### `info`
-Shows: page count, PDF version, title, author, subject, keywords, creator, producer, creation/modification dates, file size.
+- Page ranges are 1-based and accept forms like `1`, `1-3`, `8-`, and `"1-3 5 8-"`.
+- `img2pdf` treats the first image after `-i` and any following positional image paths as inputs.
+- `pages --mode copy` is the default; `pages --mode remove` writes all pages except the selected range.
+- `compress --level` accepts `low`, `medium`, or `max`.
+- `stamp --text` supports `{n}` for current page, `{N}` for total pages, and `{d}` for the current date.
+- `metadata` without write fields reads metadata; with `--title`, `--author`, `--subject`, or `--keywords`, it writes a new PDF.
 
-### `text`
-- `--layout`: Use pdfplumber for layout-aware extraction (better for tables/columns)
-- `--page`: Extract from specific page only
-- `--fmt`: Output format — `txt` (plain), `md` (markdown), `json`
+## Validation
 
-### `images`
-Extracts all embedded images. Output dir contains numbered image files with metadata JSON.
+After changing this skill, run:
 
-### `pages`
-- `--range`: Page range, e.g. `1-3`, `5`, `8-`
-- `--mode`: `copy` (extract pages) or `remove` (remove those pages)
-
-### `merge`
-Input order is preserved. Use `--shuffle` to sort by filename.
-
-### `split`
-- `--range`: e.g. `1-3 5 8-` (pages 1-3, page 5, page 8 to end)
-- `--bookmarks`: Split at each top-level bookmark, one file per bookmark
-- `--size`: Split by approximate file size (MB), producing multiple files
-
-### `rotate`
-- `--angle`: 90, 180, or 270
-- `--range`: Pages to rotate (default: all)
-
-### `watermark`
-- `--text`: Text watermark string
-- `--image`: Image file path for image watermark
-- `--opacity`: 0.0–1.0
-- `--angle`: Text rotation in degrees
-- `--pos`: `center`, `tile`, or `x,y` offset
-
-### `compress`
-- `--level`: `low` (fast), `medium`, `max` (slowest but smallest)
-
-### `encrypt`
-- `--password`: User password (required)
-- `--owner`: Owner password (default: same as user)
-- `--bits`: 40, 128, or 256 (encryption strength)
-
-### `decrypt`
-- `--password`: Password to unlock (required)
-
-### `metadata`
-- Read: `python pdf.py metadata -i file.pdf`
-- Write: `python pdf.py metadata -i file.pdf --title "New Title" --author "Author Name" ...`
-
-### `bookmarks`
-- `--list`: Show all bookmarks/outline
-- `--add`: Add bookmark — `--title "Chapter 1" --page 5 --level 1`
-- `--remove`: Remove bookmark by title
-
-### `pdf2img`
-- `--dpi`: Resolution (default: 150)
-- `--format`: `png` or `jpg` (default: `png`)
-- `--pages`: Specific pages (default: all)
-- `--output`: Output directory or pattern like `page_{n}.png`
-
-### `img2pdf`
-Input can be a folder of images or glob pattern. Output is a single PDF.
-
-### `ocr`
-- `--lang`: Tesseract language code(s), e.g. `eng`, `chi_sim+eng` (default: `eng`)
-- `--output`: Output .txt file
-- `--preprocess`: Apply image preprocessing (binarize, deskew) before OCR
-
-### `weave`
-Insert pages from a "donor" PDF into the main PDF at specified positions.
-
-### `stamp`
-- `--text`: Stamp text (e.g. page number, date, custom string)
-- `--template`: Use patterns like `{n}` (page num), `{N}` (total pages), `{d}` (date)
-- `--pos`: `header`, `footer`, `center`
-- `--font`: Font size (default: auto based on position)
-
-## Important Notes
-
-- All file paths are absolute or relative to current working directory.
-- Image watermarks support PNG with transparency.
-- Encrypted PDFs must be decrypted before most operations.
-- `--output` is required when input is also output (in-place not allowed).
-- Large PDFs: use `--lazy` flag to process pages on-demand (lower memory).
+```bash
+dotnet run --file <skill-root>/tests/smoke.cs
+dotnet run --file <repo-root>/skill-creator/scripts/validate.cs -- <skill-root>
+```
