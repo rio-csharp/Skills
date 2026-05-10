@@ -1,78 +1,159 @@
 ---
 name: siyuan
-description: Interact with SiYuan (思源笔记) local API — search/read/create/update/delete notes, execute SQL queries, manage notebooks. Use when the user mentions 思源, siyuan, notes, notebooks, or wants to manage their note-taking workspace. Requires SiYuan running at http://127.0.0.1:6806 with API token configured.
+description: Work with a local SiYuan (思源笔记) workspace through the bundled C# CLI helper. Use when the user explicitly mentions SiYuan/思源, asks to search, read, create, update, move, export, or manage SiYuan documents/notebooks, or provides SiYuan block/document IDs. Requires a running local SiYuan service and API token.
 ---
 
-# SiYuan Skill
+# SiYuan
 
-All SiYuan interactions go through the bundled C# script. Do NOT call the SiYuan HTTP API directly with curl, Python, or ad-hoc code.
+Use this skill for the user's SiYuan knowledge base. The primary interface is the bundled C# CLI helper, not direct HTTP calls.
 
-**Script:** `dotnet-script "<skill-base>/scripts/siyuan.csx" <command> [args]`
+```bash
+dotnet run --file <skill-root>/scripts/siyuan.cs -- <command> [args]
+```
 
 ## Configuration
 
-Ask the user for `$SIYUAN_URL` (default `http://127.0.0.1:6806`) and `$SIYUAN_TOKEN` (from SiYuan Settings → About → API Token). Save to `settings.json` → `env` if provided.
+The helper reads `SIYUAN_URL` and `SIYUAN_TOKEN`.
 
-## Core Commands
+- `SIYUAN_URL`: defaults to `http://127.0.0.1:6806`.
+- `SIYUAN_TOKEN`: from SiYuan Settings, About, API Token.
 
-| Command | Args | Description |
-|---------|------|-------------|
-| `ls` | — | List all notebooks |
-| `tree` | `notebook [path]` | Document tree with titles and IDs |
-| `docs` | `notebook [path]` | Flat doc listing |
-| `cat` | `id` | Export doc as markdown |
-| `info` | `id` | Block/doc metadata |
-| `get-doc` | `id` | Get doc content (JSON) |
-| `insert-block` | `parentID dataType data [--previous ID] [--next ID]` | Insert block |
-| `mv` | `toID fromID [fromID ...]` | Move docs by ID |
-| `sql` | `statement` | Execute SQL query |
-| `search` | `query [page]` | Full-text search |
-| `search-docs` | `query` | Search doc titles |
-| `path` | `id` | HPath by ID |
-| `full-path` | `id` | Full HPath with parents |
-| `breadcrumb` | `id` | Block breadcrumb |
-| `outline` | `id` | Doc heading outline |
-| `create` | `notebook path [--parent id]` | Create doc from stdin markdown |
-| `update-md` | `id` | Replace doc content from stdin markdown |
-| `rename` | `id title` | Rename doc |
-| `tags` | `[keyword]` | List/search tags |
-| `export` | `id` | Export doc in various formats |
-| `open-nb` | `notebook` | Open/mount a notebook |
-| `close-nb` | `notebook` | Close/unmount a notebook |
-| `remove-nb` | `notebook` | Remove a notebook permanently |
-| `create-nb` | `name` | Create a new notebook |
-| `rename-nb` | `notebook name` | Rename a notebook |
-| `get-nb-conf` | `notebook` | Get notebook config |
-| `set-nb-conf` | `notebook confJSON` | Set notebook config |
-| `attrs` | `id` | Get block attributes |
-| `set-attrs` | `id key=value [key=value...]` | Set block attributes |
-| `raw` | `endpoint [json]` | Call any API endpoint |
-| `duplicate` | `id` | Duplicate a doc |
-| `rm` | `id [id ...]` | Remove docs by ID |
-| `rm-path` | `notebook path` | Remove doc by path |
+Do not ask for the token unless a live operation needs it. Never print or store the token in repo files.
 
-Use `dotnet-script "<skill-base>/scripts/siyuan.csx" help` for the full list.
+## Start Here
 
-## ID Format
+1. For exploration, start read-only: `ls`, `search`, `search-docs`, `tree`, `docs`, `cat`, `outline`, `info`.
+2. For edits, confirm exact notebook/doc/block IDs before running write commands.
+3. For unsupported SiYuan kernel endpoints, use `raw` or add a command to `scripts/siyuan.cs`.
+4. Read [references/siyuan-api.md](references/siyuan-api.md) only for low-level SiYuan kernel API details, not for normal CLI usage.
 
-Document IDs are timestamps like `20260402222543-0ex8h5n`. In path contexts they end with `.sy`; omit `.sy` in ID parameters.
+## Command Reference
 
-## Deletion
+| Command | Args | Use For | Notes |
+|---|---|---|---|
+| `help` | `[command]` | Show all commands or one command description. | Safe, no token needed. |
+| `ls` | none | List notebooks. | First command to discover notebook names/IDs. |
+| `tree` | `notebook [path]` | Show document tree with titles and IDs. | `notebook` can be name or ID. |
+| `docs` | `notebook [path]` | Show a flat doc listing under a path. | Useful when tree is too much. |
+| `cat` | `id` | Export a document as Markdown. | Use after search/tree to inspect content. |
+| `info` | `id` | Print block/doc metadata JSON. | Useful to confirm root title and IDs. |
+| `get-doc` | `id` | Print raw document JSON. | More verbose than `cat`. |
+| `search` | `query [page]` | Full-text search blocks/content. | Returns matched count and snippets. |
+| `search-docs` | `query` | Search document titles. | Prefer this when looking for a note by title. |
+| `path` | `id` | Get human-readable path by ID. | Returns hPath. |
+| `full-path` | `id` | Get full human-readable path including parents. | Use before moving or editing nested docs. |
+| `breadcrumb` | `id` | Print block breadcrumb JSON. | Useful for block context. |
+| `outline` | `id` | Show document headings. | Good quick overview before reading whole doc. |
+| `recent` | none | Show recently updated blocks. | Read-only discovery. |
+| `tags` | `[keyword]` | List/search tags. | Read-only. |
+| `templates` | `[keyword]` | Search templates. | Read-only. |
+| `backlinks` | `id` | Get backlinks for a block/doc. | Read-only. |
+| `history` | `notebook path` | Get document history. | `path` is usually like `/Doc.sy`. |
+| `sql` | `statement` | Execute a SiYuan SQL query. | Prefer `SELECT ... LIMIT ...`; write SQL is high risk. |
+| `create` | `notebook path [--parent id]` | Create a document from stdin Markdown. | Requires Markdown piped on stdin. |
+| `update-md` | `id` | Replace document content from stdin Markdown. | Preserves document ID and links; first H1 renames doc. |
+| `rename` | `id title` | Rename a document. | Confirm ID first. |
+| `mv` | `toID fromID [fromID ...]` | Move documents by ID. | Confirm source and target IDs first. |
+| `duplicate` | `id` | Duplicate a document. | Useful before risky edits. |
+| `rm` | `id [id ...]` | Remove documents by ID. | High risk; confirm exact IDs. |
+| `rm-path` | `notebook path` | Remove document by notebook/path. | High risk; prefer ID deletion when possible. |
+| `insert-block` | `parentID dataType data [--previous ID] [--next ID]` | Insert a block. | `dataType` is usually `markdown`. |
+| `move-block` | `id [--parent ID] [--previous ID]` | Move a block. | Confirm block ID and destination. |
+| `attrs` | `id` | Get block attributes. | Read-only. |
+| `set-attrs` | `id key=value [key=value ...]` | Set attributes on one block. | Write operation. |
+| `set-attrs-batch` | `key=value ... --where sql_where` | Set attributes on blocks matching SQL WHERE. | High risk bulk operation; use narrow WHERE. |
+| `export` | `id format` | Export document. | Formats: `md`, `sy`, `html`, `docx`, `pdf`, `epub`, `textile`, `org`, `odt`, `rtf`, `asciidoc`. |
+| `open-nb` | `notebook` | Open/mount a notebook. | Write-ish workspace operation. |
+| `close-nb` | `notebook` | Close/unmount a notebook. | Write-ish workspace operation. |
+| `create-nb` | `name` | Create a notebook. | Write operation. |
+| `rename-nb` | `notebook name` | Rename a notebook. | Confirm notebook ID/name. |
+| `get-nb-conf` | `notebook` | Get notebook config JSON. | Read-only. |
+| `set-nb-conf` | `notebook confJSON` | Set notebook config. | High risk; preserve unknown fields. |
+| `remove-nb` | `notebook` | Remove a notebook. | Very high risk; require explicit user confirmation. |
+| `raw` | `endpoint [json]` | Call any SiYuan kernel API endpoint. | Endpoint is without `/api`; use only when helper lacks a command. |
 
-Use `rm` (calls `removeDocByID`). Do NOT use `deleteBlock` — that only deletes blocks **inside** docs, not the docs themselves.
+## Common Examples
 
-## Creating Nested Docs
+List notebooks:
 
-Use `create --parent <parentID>` — it auto-constructs the path from the parent title so SiYuan nests correctly.
+```bash
+dotnet run --file <skill-root>/scripts/siyuan.cs -- ls
+```
 
-## Updating Doc Content
+Search for notes:
 
-Use `update-md` (calls `updateBlock` API) — preserves parent-child links and the doc path. Avoid delete + recreate.
+```bash
+dotnet run --file <skill-root>/scripts/siyuan.cs -- search "keyword"
+dotnet run --file <skill-root>/scripts/siyuan.cs -- search-docs "title"
+```
 
-## Large Results
+Read a document:
 
-For large SQL results, add `LIMIT` / `pageSize` to the query.
+```bash
+dotnet run --file <skill-root>/scripts/siyuan.cs -- cat 20260402222543-0ex8h5n
+dotnet run --file <skill-root>/scripts/siyuan.cs -- outline 20260402222543-0ex8h5n
+```
 
-## When the Script Lacks a Feature
+Create a document from Markdown:
 
-Add commands to `scripts/siyuan.csx` rather than working around the script with raw HTTP calls.
+```bash
+@"
+# New Note
+
+Content.
+"@ | dotnet run --file <skill-root>/scripts/siyuan.cs -- create "Notebook Name" "New Note"
+```
+
+Create a nested document:
+
+```bash
+@"
+# Child Note
+"@ | dotnet run --file <skill-root>/scripts/siyuan.cs -- create "Notebook Name" "Child Note" --parent 20260402222543-0ex8h5n
+```
+
+Update a document without changing its ID:
+
+```bash
+@"
+# Updated Title
+
+Updated content.
+"@ | dotnet run --file <skill-root>/scripts/siyuan.cs -- update-md 20260402222543-0ex8h5n
+```
+
+Query with SQL:
+
+```bash
+dotnet run --file <skill-root>/scripts/siyuan.cs -- sql "SELECT id, content, hpath FROM blocks WHERE type='d' AND content LIKE '%keyword%' LIMIT 20"
+```
+
+Call an uncovered kernel API endpoint:
+
+```bash
+dotnet run --file <skill-root>/scripts/siyuan.cs -- raw /query/sql '{"stmt":"SELECT id FROM blocks LIMIT 5"}'
+```
+
+## Safety Rules
+
+- Prefer read-only commands before writes: `ls`, `search`, `search-docs`, `tree`, `docs`, `cat`, `info`, `outline`.
+- Treat `rm`, `rm-path`, `remove-nb`, `set-nb-conf`, `set-attrs-batch`, broad `sql`, and `raw` as high risk.
+- Before high-risk commands, confirm exact target IDs/names and the user's intent.
+- For deletion, use `rm` or `rm-path` for documents. Do not use SiYuan `deleteBlock` to remove a document; it deletes blocks inside documents.
+- For large SQL/search results, add `LIMIT`, page numbers, or narrow predicates.
+- If the helper lacks a feature, add a command to `scripts/siyuan.cs` rather than writing one-off HTTP code, unless the user explicitly asks for a quick raw call.
+
+## Validation
+
+After editing this skill or its helper, run the lightweight checks:
+
+```bash
+dotnet run --file <skill-root>/scripts/siyuan.cs -- help
+dotnet run --file <skill-root>/tests/test_siyuan.cs
+```
+
+When SiYuan is running and a disposable test notebook is acceptable, run the live integration suite:
+
+```bash
+dotnet run --file <skill-root>/tests/test_siyuan_integration.cs -- --require-live
+```
