@@ -89,7 +89,7 @@ Avoid:
 
 ## Resource Design
 
-Use `scripts/` when the operation should be deterministic, repeated, or hard to perform by hand. Scripts should accept arguments, fail clearly, and be runnable without editing source code.
+Use `scripts/` when the operation should be deterministic, repeated, or hard to perform by hand. For this skill creator, default to C# file-based apps (`.cs` single-file programs run with `dotnet run --file ...`) unless the user explicitly wants another runtime or a platform constraint makes that awkward. Scripts should accept arguments, fail clearly, and be runnable without editing source code.
 
 Use `references/` for information the agent may need to read: schemas, policies, detailed workflows, examples, APIs, and variant-specific guidance.
 

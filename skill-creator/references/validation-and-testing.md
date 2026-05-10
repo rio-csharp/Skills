@@ -17,7 +17,7 @@ Use the lightest layer that gives real confidence:
 Run:
 
 ```bash
-python <this-skill>/scripts/quick_validate.py <path-to-skill-folder>
+dotnet run --file <this-skill>/scripts/validate.cs -- <path-to-skill-folder>
 ```
 
 Static validation should catch:
@@ -88,3 +88,17 @@ For substantial work, leave a small note in the final response:
 - What passed.
 - What was not tested and why.
 - Any residual risks.
+
+For this `skill-creator`, keep automated tests focused on behavior that is easy to regress and annoying to catch by eye:
+
+- Name normalization and scaffold output shape.
+- Frontmatter parsing and validator rules.
+- Packaging exclusions and archive layout.
+
+Run them with:
+
+```bash
+dotnet run --file <this-skill>/tests/test_scaffold.cs
+dotnet run --file <this-skill>/tests/test_validate.cs
+dotnet run --file <this-skill>/tests/test_package.cs
+```

@@ -33,13 +33,13 @@ Do not create a folder just because the template allows it.
 Use the local scaffold script:
 
 ```bash
-python <this-skill>/scripts/scaffold_skill.py <skill-name> --path <output-directory>
+dotnet run --file <this-skill>/scripts/scaffold.cs -- <skill-name> --path <output-directory>
 ```
 
 Optional folders:
 
 ```bash
-python <this-skill>/scripts/scaffold_skill.py <skill-name> --path <output-directory> --resources scripts,references,assets
+dotnet run --file <this-skill>/scripts/scaffold.cs -- <skill-name> --path <output-directory> --resources scripts,references,assets
 ```
 
 If creating a skill for the current Codex environment and the user did not specify a location, use `$CODEX_HOME/skills` when set, otherwise `~/.codex/skills`.
@@ -62,6 +62,7 @@ Create only resources that directly support the skill.
 
 For scripts:
 
+- Default to C# file-based apps so the created skill stays consistent with this toolkit.
 - Add argument parsing.
 - Avoid hardcoded absolute paths.
 - Print clear errors.
@@ -85,7 +86,7 @@ For assets:
 Run:
 
 ```bash
-python <this-skill>/scripts/quick_validate.py <path-to-skill-folder>
+dotnet run --file <this-skill>/scripts/validate.cs -- <path-to-skill-folder>
 ```
 
 Fix errors. Review warnings and either address them or keep them intentionally.
@@ -119,7 +120,7 @@ Stop when the skill is clear, validated, and good enough for the user's intended
 Package with:
 
 ```bash
-python <this-skill>/scripts/package_skill.py <path-to-skill-folder> [output-directory]
+dotnet run --file <this-skill>/scripts/package.cs -- <path-to-skill-folder> [output-directory]
 ```
 
 Package only the skill folder and useful resources. Do not include eval workspaces, logs, caches, or generated reports.

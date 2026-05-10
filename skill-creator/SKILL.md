@@ -120,6 +120,7 @@ Start with resources that remove repeated work or reduce mistakes.
 
 Scripts should:
 
+- Default to C# file-based apps (`.cs` single-file programs run with `dotnet run --file ...`) unless the user explicitly wants another runtime or the target platform makes C# a poor fit.
 - Accept paths and options as arguments instead of hardcoding local paths.
 - Print clear success and failure messages.
 - Return non-zero exit codes on failure.
@@ -143,7 +144,7 @@ Assets should:
 Run the local validator after any meaningful edit:
 
 ```bash
-python <this-skill>/scripts/quick_validate.py <path-to-skill-folder>
+dotnet run --file <this-skill>/scripts/validate.cs -- <path-to-skill-folder>
 ```
 
 Fix validation failures before packaging. Treat warnings as design prompts: they may be acceptable, but should be intentional.
@@ -169,10 +170,16 @@ When improving from feedback:
 Package only after validation passes and the user is ready:
 
 ```bash
-python -m scripts.package_skill <path-to-skill-folder> [output-directory]
+dotnet run --file <this-skill>/scripts/package.cs -- <path-to-skill-folder> [output-directory]
 ```
 
-Run this from the `skill-creator` directory or make sure Python can import its `scripts` package.
+The toolkit also supports scaffolding:
+
+```bash
+dotnet run --file <this-skill>/scripts/scaffold.cs -- <skill name> --path <output-directory> --resources scripts,references,assets
+```
+
+If you run these commands from a directory that already contains a `.csproj`, keep the explicit `--file` flag. .NET file-based apps use that flag to avoid picking the surrounding project by accident.
 
 ## Reference Files
 
@@ -182,3 +189,4 @@ Run this from the `skill-creator` directory or make sure Python can import its `
 - [references/triggering.md](references/triggering.md): trigger descriptions, near-miss prompts, and description review.
 - [references/platform-notes.md](references/platform-notes.md): Claude Code, Claude.ai, API/container, and headless environment differences.
 - [references/security-review.md](references/security-review.md): trust, tool permissions, side effects, secrets, enterprise review, and packaging safety.
+- [tests](tests): single-file smoke tests for the C# file-based apps.
