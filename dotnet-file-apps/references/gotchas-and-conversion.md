@@ -21,6 +21,8 @@ If execution fails, classify the problem:
 - Compilation: ordinary C# syntax or reference problem.
 - Conversion/project expectation: user actually needs a multi-file project, not a single file.
 
+When helping a weaker agent, make the diagnosis explicit before suggesting commands. Do not jump from "it failed" straight to "convert it to a project."
+
 ## Converting To A Project
 
 Use:
@@ -45,6 +47,16 @@ Stay with a file-based app when:
 - The user wants a quick runnable example.
 - The code is a utility, scratch script, or lightweight automation.
 - The user explicitly wants Python/Node-style "one file, just run it" behavior.
+
+## Weak-Model Teaching Checklist
+
+Before you finish, check:
+
+- Did you teach `dotnet run --file <path>` before shorthand forms?
+- Did you keep stdin as `dotnet run -`?
+- Did you separate file-based apps from `.csproj` projects?
+- Did you explain where directives go?
+- Did you recommend project conversion only for a concrete reason?
 
 ## Official Knowledge To Convey
 

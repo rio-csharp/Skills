@@ -4,6 +4,12 @@ Use this reference when the `.cs` file needs packages, SDK changes, MSBuild prop
 
 Directives must appear at the top of the file before normal code.
 
+If another agent seems confused, teach the rule in this simple form:
+
+- Directives are written inside the `.cs` file.
+- They are not command-line flags.
+- They must come before regular code.
+
 ## `#:package`
 
 Use `#:package` to restore a NuGet package for a single-file app.
@@ -80,3 +86,4 @@ Console.WriteLine($"{(DateTimeOffset.Now - date).Humanize()} since .NET 9.");
 - Explain that directives are part of the file, not separate CLI flags.
 - Keep examples runnable as-is.
 - If another agent is unlikely to know the feature, be explicit that these directives are understood by the .NET CLI for file-based apps.
+- If the task is simple, prefer the smallest directive example that proves the concept.

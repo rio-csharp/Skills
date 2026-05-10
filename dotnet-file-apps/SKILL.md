@@ -7,6 +7,8 @@ description: Run, write, debug, explain, and convert C# file-based apps with `do
 
 Use this skill to help another agent work with single-file C# programs that run directly through the .NET CLI. Keep `SKILL.md` short, and load references only when the task needs deeper syntax or edge-case detail.
 
+Assume the agent using this skill may predate the feature or may be weak at distinguishing file-based apps from normal `.csproj` workflows. Use explicit command shapes and explicit decision steps.
+
 ## Start Here
 
 1. Identify whether the user wants to run, author, debug, explain, or convert a file-based app.
@@ -17,6 +19,21 @@ Use this skill to help another agent work with single-file C# programs that run 
    - File directives and examples: [references/directives.md](references/directives.md)
    - Limits, traps, and project conversion: [references/gotchas-and-conversion.md](references/gotchas-and-conversion.md)
 
+## Decision Table
+
+Use this table before acting:
+
+- Existing `.cs` file to execute:
+  Use `dotnet run --file <path>` by default.
+- Existing `.cs` file plus program arguments:
+  Use `dotnet run --file <path> -- <args>`.
+- Tiny code snippet coming from stdin:
+  Use `dotnet run -`.
+- Single-file app needs packages, SDK changes, or project references:
+  Add file directives at the top of the file and read [references/directives.md](references/directives.md).
+- User actually has a multi-file app or wants long-term project tooling:
+  Explain file-based apps briefly, then consider `dotnet project convert`.
+
 ## Core Workflow
 
 ### Running An Existing File
@@ -26,6 +43,14 @@ Use this skill to help another agent work with single-file C# programs that run 
 3. Run it with `dotnet run --file <path>` or `dotnet <path>.cs`.
 4. If the user supplied program arguments, append them after `--`.
 5. Report output or errors clearly, including whether the problem is CLI usage, missing SDK/runtime support, package restore, or compilation.
+
+For weak-model-safe execution, prefer this exact order:
+
+1. Check whether the target is a real file path, stdin snippet, or actually a project.
+2. If it is a file, default to `dotnet run --file <path>`.
+3. Only mention `dotnet <path>.cs` after the explicit form is already clear.
+4. Only use `dotnet run -` for stdin snippets.
+5. If anything fails, classify the failure before suggesting a fix.
 
 ### Writing A New File-Based App
 
@@ -46,6 +71,27 @@ If the user outgrows the single-file form, use `dotnet project convert <file>.cs
 - Do not assume the feature exists in older SDKs; verify the local SDK when the environment matters.
 - Keep trigger guidance in frontmatter, not in a separate "when to use" essay.
 - When teaching an older-model agent, explain the exact command shape and where directives must appear.
+
+## Anti-Patterns
+
+Do not do these things:
+
+- Do not use `dotnet run app.cs` as the default recommended syntax.
+- Do not rewrite stdin execution as `dotnet run --file -`.
+- Do not treat a loose `.cs` file like a `.csproj` project.
+- Do not place directives after normal code.
+- Do not recommend converting to a project unless the single-file form is becoming a bad fit.
+
+## Minimal Correct Examples
+
+Use these when the other agent seems confused:
+
+```bash
+dotnet run --file hello.cs
+dotnet run --file hello.cs -- a b c
+echo "Console.WriteLine(\"hi\");" | dotnet run -
+dotnet project convert hello.cs
+```
 
 ## Reference Files
 
