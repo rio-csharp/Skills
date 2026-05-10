@@ -36,6 +36,7 @@ Use one realistic prompt. Follow the skill as written, not from memory. Note:
 
 - Did the description match the task?
 - Did `SKILL.md` point to the right resources?
+- Could the agent run the common path from `SKILL.md` without opening a mismatched reference?
 - Did any instruction feel ambiguous?
 - Did the agent need knowledge that was not available?
 - Did scripts run successfully?
@@ -65,6 +66,7 @@ Compare:
 - Output correctness.
 - Time and tool usage.
 - Whether the new skill loads fewer irrelevant details.
+- Whether the new skill still exposes enough command/procedure detail for weaker agents.
 - Whether the new description triggers more accurately.
 - Whether side effects are clearer and safer.
 
@@ -111,6 +113,8 @@ Run this review before accepting a draft created by a weaker model:
 
 - Does the description carry the trigger logic by itself?
 - Is the main `SKILL.md` under control, or did it turn into a giant reference dump?
+- Is the main `SKILL.md` too thin to operate the skill safely?
+- Are bundled helper commands clearly distinguished from external APIs or specs?
 - If there are scripts, are they C# file-based apps by default?
 - Is there a smoke test that proves the main path works?
 - Are high-risk pitfalls called out explicitly?

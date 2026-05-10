@@ -12,9 +12,17 @@ try
 
     Require(result.ExitCode == 0, result.ToDebugString());
     Require(result.StdOut.Contains("Created skill at", StringComparison.Ordinal), result.ToDebugString());
-    Require(File.Exists(Path.Combine(outputRoot, "demo-skill", "SKILL.md")), "Missing SKILL.md");
+    var skillMarkdownPath = Path.Combine(outputRoot, "demo-skill", "SKILL.md");
+    Require(File.Exists(skillMarkdownPath), "Missing SKILL.md");
     Require(File.Exists(Path.Combine(outputRoot, "demo-skill", "scripts", ".gitkeep")), "Missing scripts/.gitkeep");
     Require(File.Exists(Path.Combine(outputRoot, "demo-skill", "references", ".gitkeep")), "Missing references/.gitkeep");
+
+    var skillMarkdown = File.ReadAllText(skillMarkdownPath);
+    Require(skillMarkdown.Contains("## Common Commands Or Procedure", StringComparison.Ordinal), "Missing operational commands section");
+    Require(skillMarkdown.Contains("## Safety", StringComparison.Ordinal), "Missing safety section");
+    Require(skillMarkdown.Contains("## Validation", StringComparison.Ordinal), "Missing validation section");
+    Require(skillMarkdown.Contains("dotnet run --file", StringComparison.Ordinal), "Missing C# file app guidance");
+    Require(!skillMarkdown.Contains("TODO", StringComparison.Ordinal), "Scaffold should not emit TODO placeholders");
 
     Console.WriteLine("PASS test_scaffold");
     return 0;

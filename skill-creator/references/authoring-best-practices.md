@@ -7,7 +7,7 @@ Use this guide when creating, rewriting, or auditing a skill. The goal is a skil
 A strong skill is:
 
 - Discoverable from its frontmatter description.
-- Small at the entrypoint and rich only when needed.
+- Useful at the entrypoint and rich only when needed.
 - Specific about workflows, resources, validation, and side effects.
 - Safe to inspect before use.
 - Tested on realistic tasks, including near-misses.
@@ -35,7 +35,11 @@ Design for three levels:
 - `SKILL.md` body: loaded after the skill triggers.
 - Bundled resources: loaded or executed only when the task needs them.
 
-Keep the body as a navigation map and short playbook. Put detailed examples, specs, schemas, API notes, and variant-specific instructions in `references/`.
+Keep the body as a navigation map and short playbook, but do not make it so thin that an agent cannot operate the skill. `SKILL.md` should contain the commands, arguments, examples, safety rules, and validation steps needed for the common path.
+
+Put detailed specs, schemas, external API notes, uncommon edge cases, and large example sets in `references/`.
+
+If a skill wraps an external tool or API with a bundled helper script, distinguish the helper interface from the external API. A reference named `api.md` should say whose API it documents. Do not point agents to a vendor API reference when they need the bundled helper's command reference.
 
 Prefer one-hop references. If `SKILL.md` links to `references/aws.md`, that file should contain what the agent needs for AWS rather than pointing through several more files.
 
@@ -74,6 +78,7 @@ Good `SKILL.md` bodies usually include:
 
 - Start-here routing.
 - A compact workflow.
+- The bundled commands or exact procedure needed for normal use.
 - Resource map with "read/run this when..." instructions.
 - Validation instructions.
 - Safety or permission notes when relevant.
@@ -85,7 +90,7 @@ Avoid:
 
 - A long "what this skill is" essay.
 - Generic model advice.
-- Duplicate content from references.
+- Duplicate content from references unless duplication is necessary for safe common-path execution.
 - Install or changelog docs.
 - Hidden assumptions about local paths, secrets, or live systems.
 
@@ -134,7 +139,8 @@ Never create skills that hide their purpose, exfiltrate data, bypass permissions
 
 - `SKILL.md` has valid frontmatter.
 - The description can trigger the skill without reading the body.
-- `SKILL.md` is concise and links to all deeper resources.
+- `SKILL.md` contains enough command/procedure detail for the primary workflow.
+- `SKILL.md` links to deeper resources with clear scope labels.
 - Every referenced file exists.
 - No unnecessary docs or generated clutter are included.
 - Scripts have been smoke-tested.
@@ -146,7 +152,9 @@ Never create skills that hide their purpose, exfiltrate data, bypass permissions
 Reject or rewrite drafts that show these patterns:
 
 - The body contains the real trigger logic while `description` stays generic.
-- `SKILL.md` duplicates large reference material instead of routing to it.
+- `SKILL.md` hides essential command usage in a reference file.
+- Reference names blur different layers, such as a helper CLI reference vs. an external API reference.
+- `SKILL.md` duplicates large external specs instead of routing to them.
 - The folder name and frontmatter `name` do not match.
 - Scripts use a random runtime with no justification.
 - The only test is a large integration script that mutates real data.

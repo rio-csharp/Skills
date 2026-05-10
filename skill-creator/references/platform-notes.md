@@ -67,5 +67,5 @@ If there is no browser or GUI:
 When writing commands in skills that may run on Windows:
 
 - Avoid Unix-only shell syntax unless the skill is Unix-specific.
-- Prefer Python scripts for portable file operations.
+- Prefer C# file-based apps for bundled helper scripts in this repository unless the user requests another runtime or the platform makes C# a poor fit.
 - Mention PowerShell alternatives only if the skill expects Windows users.

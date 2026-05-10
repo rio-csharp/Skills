@@ -211,8 +211,53 @@ static ValidationResult ValidateSkill(string skillPath)
         }
     }
 
+    var scriptFiles = FilesUnder(path, "scripts").ToList();
+    if (scriptFiles.Count > 0)
+    {
+        if (!body.Contains("scripts/", StringComparison.Ordinal) &&
+            !body.Contains("scripts\\", StringComparison.Ordinal) &&
+            !body.Contains("dotnet run --file", StringComparison.OrdinalIgnoreCase))
+        {
+            result.Warnings.Add("scripts/ contains files, but SKILL.md does not clearly mention how to run bundled scripts");
+        }
+
+        var csharpScripts = scriptFiles
+            .Where(file => string.Equals(Path.GetExtension(file), ".cs", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (csharpScripts.Count > 0 && !body.Contains("dotnet run --file", StringComparison.OrdinalIgnoreCase))
+        {
+            result.Warnings.Add("C# file-based script(s) found, but SKILL.md does not show a dotnet run --file command");
+        }
+
+        var hasValidationSection = Regex.IsMatch(body, @"(?im)^##\s+Validation\s*$");
+        if (!hasValidationSection)
+        {
+            result.Warnings.Add("scripts/ contains files; add a Validation section with at least one script smoke test");
+        }
+    }
+
+    var referenceFiles = FilesUnder(path, "references").ToList();
+    if (referenceFiles.Count > 0 &&
+        !body.Contains("references/", StringComparison.Ordinal) &&
+        !body.Contains("references\\", StringComparison.Ordinal))
+    {
+        result.Warnings.Add("references/ contains files, but SKILL.md does not link or scope any references");
+    }
+
     result.Warnings.Sort(StringComparer.Ordinal);
     return result;
+}
+
+static IEnumerable<string> FilesUnder(string root, string childDirectory)
+{
+    var directory = Path.Combine(root, childDirectory);
+    if (!Directory.Exists(directory))
+    {
+        return [];
+    }
+
+    return Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
+        .Where(file => !string.Equals(Path.GetFileName(file), ".gitkeep", StringComparison.Ordinal));
 }
 
 static void PrintResult(ValidationResult result)

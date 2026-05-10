@@ -28,12 +28,15 @@ For each example prompt, imagine doing the task from scratch and identify repeat
 
 Do not create a folder just because the template allows it.
 
+Do not move operational essentials out of `SKILL.md`. If agents need a command table, argument contract, stdin/stdout convention, or safety warning to use the skill correctly, keep it in `SKILL.md` even if it repeats a smaller amount of reference content.
+
 For weaker models, make the choice explicit:
 
 - Need deterministic behavior or repeated local commands: create a C# file-based script.
 - Need large factual reference material: create a reference file.
 - Need output materials to copy or modify: create an asset.
 - Need trigger logic or routing: keep it in `SKILL.md`.
+- Need to know how to call the bundled helper: keep the helper commands in `SKILL.md`, or add a clearly named helper reference and keep the common commands in `SKILL.md`.
 
 ## 3. Scaffold
 
@@ -67,6 +70,7 @@ Then write the body:
 - Start with the most common path.
 - Include decision points only where needed.
 - Link references with precise conditions.
+- Separate bundled helper commands from external API references.
 - Say how to validate outputs.
 - Keep platform-specific notes out unless they apply.
 
@@ -86,6 +90,7 @@ For scripts:
 For references:
 
 - Put a short title at the top.
+- State what the file is and is not, especially for API references.
 - Add a table of contents if long.
 - Use topic-specific files rather than one giant reference.
 - Remove duplicate content from `SKILL.md`.

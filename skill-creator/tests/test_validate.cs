@@ -24,6 +24,29 @@ try
     Require(result.ExitCode == 1, result.ToDebugString());
     Require((result.StdOut + result.StdErr).Contains("local link target does not exist", StringComparison.Ordinal), result.ToDebugString());
 
+    var thinScriptSkillPath = Path.Combine(tempRoot, "thin-script-skill");
+    Directory.CreateDirectory(Path.Combine(thinScriptSkillPath, "scripts"));
+    File.WriteAllText(Path.Combine(thinScriptSkillPath, "SKILL.md"), """
+        ---
+        name: thin-script-skill
+        description: Handle a narrow scripted workflow. Use when the user asks to run this specific local helper workflow.
+        ---
+
+        # Thin Script Skill
+
+        Use this skill for the workflow.
+        """.Replace("\n", Environment.NewLine));
+    File.WriteAllText(Path.Combine(thinScriptSkillPath, "scripts", "helper.cs"), """
+        #!/usr/bin/env dotnet
+        Console.WriteLine("ok");
+        """.Replace("\n", Environment.NewLine));
+
+    var warningResult = RunDotnet(skillCreatorRoot, "run", "--file", validateScript, "--", thinScriptSkillPath);
+    var warningOutput = warningResult.StdOut + warningResult.StdErr;
+    Require(warningResult.ExitCode == 0, warningResult.ToDebugString());
+    Require(warningOutput.Contains("dotnet run --file", StringComparison.Ordinal), warningResult.ToDebugString());
+    Require(warningOutput.Contains("Validation section", StringComparison.Ordinal), warningResult.ToDebugString());
+
     Console.WriteLine("PASS test_validate");
     return 0;
 }

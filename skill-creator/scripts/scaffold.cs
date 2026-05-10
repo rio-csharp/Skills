@@ -150,23 +150,51 @@ static string BuildSkillMarkdown(string normalized)
     return $"""
     ---
     name: {normalized}
-    description: TODO: Describe what this skill does and the concrete situations that should trigger it.
+    description: Do [specific job] for [domain/files/system]. Use when the user asks to [task A], [task B], [task C], mentions [tool/file type/domain phrase], or needs [specialized outcome].
     ---
 
     # {title}
 
-    Use this skill when TODO.
+    Replace this sentence with the skill's purpose and primary interface/tool, if there is one.
+
+    ## Start Here
+
+    1. Identify the task and required inputs.
+    2. Use the common command/procedure below for the main path.
+    3. Read a reference only when the task matches its documented scope.
+    4. Validate before handing off.
+
+    ## Common Commands Or Procedure
+
+    Keep the commands, arguments, stdin/stdout conventions, or exact steps needed for normal use here.
+
+    - `[exact command or step]`: when to use it, required args, important output.
+    - `[exact command or step]`: when to use it, required args, important output.
 
     ## Workflow
 
-    1. TODO: Capture inputs and constraints.
-    2. TODO: Run or read the relevant resources.
-    3. TODO: Produce the expected output.
-    4. TODO: Validate the result.
+    1. Capture inputs and constraints.
+    2. Run the exact command/procedure or read the correctly scoped reference.
+    3. Produce the expected output.
+    4. Validate the result.
 
     ## Resources
 
-    TODO: List bundled resources and when to use them.
+    List bundled resources and when to use them. If both a bundled helper and an external API exist, distinguish their scopes.
+
+    - `scripts/...`: run when ...
+    - `references/...`: read when ...; scope is ...
+    - `assets/...`: use when ...
+
+    ## Safety
+
+    - List destructive operations, credentials, live systems, or user confirmation requirements.
+    - Prefer safe/read-only exploration before writes when applicable.
+
+    ## Validation
+
+    - Run the lightest smoke test that proves the main path works.
+    - Run heavier integration tests only when the required live systems or fixtures are available.
 
     If this skill needs helper scripts, default them to C# file-based apps (`.cs` single-file programs run with `dotnet run --file ...`) unless there is a strong reason to use another runtime.
     """;
