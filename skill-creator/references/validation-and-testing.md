@@ -39,6 +39,7 @@ Use one realistic prompt. Follow the skill as written, not from memory. Note:
 - Could the agent run the common path from `SKILL.md` without opening a mismatched reference?
 - Did any instruction feel ambiguous?
 - Did the agent need knowledge that was not available?
+- For external-tool skills, did key guidance trace back to official docs, primary specs, upstream source, or clearly labeled best-available evidence rather than memory?
 - Did scripts run successfully?
 - Was validation possible?
 
@@ -114,6 +115,7 @@ Run this review before accepting a draft created by a weaker model:
 - Does the description carry the trigger logic by itself?
 - Is the main `SKILL.md` under control, or did it turn into a giant reference dump?
 - Is the main `SKILL.md` too thin to operate the skill safely?
+- For external-tool skills, are official docs, specs, source-code findings, or best-available evidence represented with clear provenance, confidence, and known gaps?
 - Are bundled helper commands clearly distinguished from external APIs or specs?
 - If there are scripts, are they C# file-based apps by default?
 - Is there a smoke test that proves the main path works?

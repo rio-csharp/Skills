@@ -31,6 +31,7 @@ Assume the skill author may be a weaker model. Prefer concrete templates, explic
 ## Non-Negotiables
 
 - Put trigger logic in frontmatter `description`, not only in the body.
+- For skills about external tools, products, APIs, SDKs, services, or file formats, ground guidance in official documentation, primary specifications, or source code before writing reusable instructions. If no official docs exist, use the best available primary evidence such as source code, schemas, CLI help, exported examples, release notes, or direct tool behavior, and label confidence/known gaps. If useful, clone/read upstream source in a temporary working directory outside the skill folder, then summarize only stable findings into the skill.
 - Keep operational essentials in `SKILL.md`: common commands, required arguments, stdin/stdout conventions, safety rules, and validation steps.
 - Do not confuse bundled helper interfaces with external/vendor APIs. Label reference scope clearly.
 - Default helper scripts to C# file-based apps run with `dotnet run --file ...` unless the user or platform gives a concrete reason not to.
@@ -44,6 +45,7 @@ Before accepting a weaker-model draft, check:
 - Can an agent choose the skill from `name` and `description` alone?
 - Can an agent perform the primary workflow from `SKILL.md` without opening the wrong reference?
 - Is `SKILL.md` neither a giant external API dump nor too thin to operate safely?
+- For external-tool skills, does the guidance cite or summarize official docs, specs, or source-code findings instead of relying on memory or secondary posts?
 - Are bundled helper commands clearly distinguished from external APIs/specs?
 - If scripts exist, are they C# file-based apps by default and smoke-tested?
 - Are high-risk commands, credentials, live systems, and destructive operations called out?

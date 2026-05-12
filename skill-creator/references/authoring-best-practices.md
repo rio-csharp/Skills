@@ -8,6 +8,7 @@ A strong skill is:
 
 - Discoverable from its frontmatter description.
 - Useful at the entrypoint and rich only when needed.
+- Grounded in primary sources when it describes an external tool, product, API, SDK, service, protocol, or file format.
 - Specific about workflows, resources, validation, and side effects.
 - Safe to inspect before use.
 - Tested on realistic tasks, including near-misses.
@@ -38,6 +39,8 @@ Design for three levels:
 Keep the body as a navigation map and short playbook, but do not make it so thin that an agent cannot operate the skill. `SKILL.md` should contain the commands, arguments, examples, safety rules, and validation steps needed for the common path.
 
 Put detailed specs, schemas, external API notes, uncommon edge cases, and large example sets in `references/`.
+
+For external tools, prefer official documentation, primary specifications, or upstream source code. If official docs are missing or incomplete, use the best available primary evidence: source code, schemas, CLI help, exported examples, release notes, fixtures, observed local behavior, or user-provided artifacts. For open-source projects, clone or inspect upstream source in a temporary working directory outside the skill folder, not as bundled skill content unless the user explicitly asks. Turn findings into concise references with provenance, confidence, and known gaps. Do not base reusable instructions on memory or secondary articles when stronger evidence is reasonably available.
 
 If a skill wraps an external tool or API with a bundled helper script, distinguish the helper interface from the external API. A reference named `api.md` should say whose API it documents. Do not point agents to a vendor API reference when they need the bundled helper's command reference.
 
@@ -100,6 +103,8 @@ Use `scripts/` when the operation should be deterministic, repeated, or hard to 
 
 Use `references/` for information the agent may need to read: schemas, policies, detailed workflows, examples, APIs, and variant-specific guidance.
 
+For references about external tools, add a short provenance note near the top: official docs/spec URLs, source repository paths, version/date/commit inspected, evidence type when no official docs exist, confidence level, and any known gaps. Keep copied material minimal; summarize stable behavior and link or cite the primary source instead of pasting large sections.
+
 Use `assets/` for output materials: templates, starter projects, fonts, icons, source documents, or sample files that the agent copies or modifies.
 
 ## Degrees Of Freedom
@@ -152,6 +157,7 @@ Never create skills that hide their purpose, exfiltrate data, bypass permissions
 Reject or rewrite drafts that show these patterns:
 
 - The body contains the real trigger logic while `description` stays generic.
+- External-tool guidance is written from memory or secondary sources even though official docs, specs, or source code are available.
 - `SKILL.md` hides essential command usage in a reference file.
 - Reference names blur different layers, such as a helper CLI reference vs. an external API reference.
 - `SKILL.md` duplicates large external specs instead of routing to them.
