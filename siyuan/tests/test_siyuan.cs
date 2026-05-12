@@ -32,6 +32,18 @@ try
     Require(unknown.ExitCode == 1, unknown.ToDebugString());
     Require(unknown.StdErr.Contains("Unknown command", StringComparison.Ordinal), unknown.ToDebugString());
 
+    var missingTreeArg = RunTool("tree");
+    Require(missingTreeArg.ExitCode == 1, missingTreeArg.ToDebugString());
+    Require(missingTreeArg.StdErr.Contains("Usage: tree", StringComparison.Ordinal), missingTreeArg.ToDebugString());
+
+    var missingRmArg = RunTool("rm");
+    Require(missingRmArg.ExitCode == 1, missingRmArg.ToDebugString());
+    Require(missingRmArg.StdErr.Contains("Usage: rm", StringComparison.Ordinal), missingRmArg.ToDebugString());
+
+    var missingUpdateInput = RunTool("update-md", "dummy-id");
+    Require(missingUpdateInput.ExitCode == 1, missingUpdateInput.ToDebugString());
+    Require(missingUpdateInput.StdErr.Contains("No markdown content provided", StringComparison.Ordinal), missingUpdateInput.ToDebugString());
+
     if (!await CanReachSiyuan())
     {
         Console.WriteLine("SKIP: live CLI payload checks skipped because SiYuan is not reachable or SIYUAN_TOKEN is not accepted.");

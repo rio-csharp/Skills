@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Collections.Generic;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
@@ -32,7 +33,7 @@ class DocxTool
 
     int CmdRead(string[] args)
     {
-        var input = Arg("--input", "-i", args) ?? Arg("", "", args);
+        var input = Arg("--input", "-i", args) ?? Positional(args);
         if (string.IsNullOrEmpty(input)) return Fail("read: --input required");
 
         if (!File.Exists(input)) return Fail($"File not found: {input}");
@@ -83,7 +84,7 @@ class DocxTool
 
     int CmdModify(string[] args)
     {
-        var input = Arg("--input", "-i", args) ?? Arg("", "", args);
+        var input = Arg("--input", "-i", args) ?? Positional(args);
         if (string.IsNullOrEmpty(input)) return Fail("modify: --input required");
         var output = Arg("--output", "-o", args);
         var content = Arg("--content", "-c", args);
@@ -114,7 +115,7 @@ class DocxTool
 
     int CmdConvert(string[] args)
     {
-        var input = Arg("--input", "-i", args) ?? Arg("", "", args);
+        var input = Arg("--input", "-i", args) ?? Positional(args);
         if (string.IsNullOrEmpty(input)) return Fail("convert: --input required");
         var output = Arg("--output", "-o", args);
         var format = Arg("--format", "-f", args)?.ToLowerInvariant() ?? "txt";
@@ -165,6 +166,22 @@ class DocxTool
         {
             if (args[i] == longForm || (!string.IsNullOrEmpty(shortForm) && args[i] == shortForm))
                 return i + 1 < args.Length ? args[i + 1] : null;
+        }
+        return null;
+    }
+
+    string? Positional(string[] args)
+    {
+        var optionsWithValues = new HashSet<string> { "--input", "-i", "--output", "-o", "--content", "-c", "--append", "--format", "-f" };
+        for (int i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (optionsWithValues.Contains(arg))
+            {
+                i++;
+                continue;
+            }
+            if (!arg.StartsWith("-")) return arg;
         }
         return null;
     }

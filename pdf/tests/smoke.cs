@@ -210,6 +210,8 @@ CommandResult RunPy(params string[] arguments)
         UseShellExecute = false
     };
     startInfo.ArgumentList.Add("run");
+    startInfo.ArgumentList.Add("--with");
+    startInfo.ArgumentList.Add("pymupdf");
     startInfo.ArgumentList.Add("python");
     startInfo.ArgumentList.Add(extractImagesPy);
     foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);

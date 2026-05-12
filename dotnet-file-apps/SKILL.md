@@ -1,6 +1,6 @@
 ---
 name: dotnet-file-apps
-description: Run, write, debug, explain, and convert C# file-based apps with `dotnet run --file` or `dotnet <file>.cs`. Use when the user wants to execute a standalone `.cs` file without a `.csproj`, asks about `#:package` / `#:sdk` / `#:property` / `#:project` directives, wants to use NuGet packages in a single-file C# program, needs to pass arguments to a file-based app, wants to pipe C# through stdin with `dotnet run -`, or needs to convert a file-based app into a regular project with `dotnet project convert`.
+description: Run, write, debug, explain, and convert C# file-based apps with `dotnet run --file` or the `dotnet app.cs` shorthand. Use when the user wants to execute a standalone `.cs` file without a project file, asks about `#:package` / `#:sdk` / `#:property` / `#:project` directives, wants to use NuGet packages in a single-file C# program, needs to pass arguments to a file-based app, wants to pipe C# through stdin with `dotnet run -`, or needs to convert a file-based app into a regular project with `dotnet project convert`.
 ---
 
 # .NET File-Based Apps

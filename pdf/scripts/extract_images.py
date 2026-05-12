@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Extract embedded images from PDF pages, or render pages as PNG.
-Usage: uv run python extract_images.py <command> [options]
-Requires: uv (run 'uv run python extract_images.py --help' to verify)
+Usage: uv run --with pymupdf python extract_images.py <command> [options]
+Requires: uv (run 'uv run --with pymupdf python extract_images.py --help' to verify)
 """
 
 import sys

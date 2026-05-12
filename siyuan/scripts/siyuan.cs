@@ -244,7 +244,7 @@ class SiyuanTool
 
     async Task<int> CmdTree(List<string> args)
     {
-        if (!RequireArgs(args, 1, "tree <notebook> [path]")) return 0;
+        if (!RequireArgs(args, 1, "tree <notebook> [path]")) return 1;
         var box = GetNotebookId(args[0]);
         var path = args.Count > 1 ? SanitizePath(args[1]) : "/";
         var treeData = await Api("/filetree/listDocTree", new { notebook = box, path });
@@ -273,7 +273,7 @@ class SiyuanTool
 
     async Task<int> CmdDocs(List<string> args)
     {
-        if (!RequireArgs(args, 1, "docs <notebook> [path]")) return 0;
+        if (!RequireArgs(args, 1, "docs <notebook> [path]")) return 1;
         var box = GetNotebookId(args[0]);
         var path = args.Count > 1 ? SanitizePath(args[1]) : "/";
         var data = await Api("/filetree/listDocsByPath", new { notebook = box, path, sort = 0, maxListCount = 999999 });
@@ -284,7 +284,7 @@ class SiyuanTool
 
     async Task<int> CmdCat(List<string> args)
     {
-        if (!RequireArgs(args, 1, "cat <id>")) return 0;
+        if (!RequireArgs(args, 1, "cat <id>")) return 1;
         var data = await Api("/export/exportMdContent", new { id = args[0] });
         Console.WriteLine($"# {data.GetProperty("hPath").GetString()}\n");
         Console.WriteLine(data.GetProperty("content").GetString());
@@ -293,7 +293,7 @@ class SiyuanTool
 
     async Task<int> CmdInfo(List<string> args)
     {
-        if (!RequireArgs(args, 1, "info <id>")) return 0;
+        if (!RequireArgs(args, 1, "info <id>")) return 1;
         var data = await Api("/block/getBlockInfo", new { id = args[0] });
         PrintJson(data);
         return 0;
@@ -301,6 +301,7 @@ class SiyuanTool
 
     async Task<int> CmdRm(List<string> args)
     {
+        if (!RequireArgs(args, 1, "rm <id> [id ...]")) return 1;
         foreach (var id in args)
         {
             await Api("/filetree/removeDocByID", new { id });
@@ -311,7 +312,7 @@ class SiyuanTool
 
     async Task<int> CmdRmPath(List<string> args)
     {
-        if (!RequireArgs(args, 2, "rm-path <notebook> <path>")) return 0;
+        if (!RequireArgs(args, 2, "rm-path <notebook> <path>")) return 1;
         var box = GetNotebookId(args[0]);
         await Api("/filetree/removeDoc", new { notebook = box, path = args[1] });
         Console.WriteLine($"Removed: {args[0]}:{args[1]}");
@@ -320,7 +321,7 @@ class SiyuanTool
 
     async Task<int> CmdMv(List<string> args)
     {
-        if (!RequireArgs(args, 2, "mv <toID> <fromID...>")) return 0;
+        if (!RequireArgs(args, 2, "mv <toID> <fromID...>")) return 1;
         var toId = args[0];
         var fromIds = args.Skip(1).ToList();
         await Api("/filetree/moveDocsByID", new { fromIDs = fromIds, toID = toId });
@@ -330,7 +331,7 @@ class SiyuanTool
 
     async Task<int> CmdSql(List<string> args)
     {
-        if (!RequireArgs(args, 1, "sql <statement>")) return 0;
+        if (!RequireArgs(args, 1, "sql <statement>")) return 1;
         var stmt = string.Join(" ", args);
         var data = await Api("/query/sql", new { stmt });
         if (data.ValueKind == JsonValueKind.Array)
@@ -348,7 +349,7 @@ class SiyuanTool
 
     async Task<int> CmdSearch(List<string> args)
     {
-        if (!RequireArgs(args, 1, "search <query> [page]")) return 0;
+        if (!RequireArgs(args, 1, "search <query> [page]")) return 1;
         var page = args.Count > 1 ? int.Parse(args[1]) : 1;
         var data = await Api("/search/fullTextSearchBlock", new { query = args[0], method = 0, page, pageSize = 32, orderBy = 0, groupBy = 1 });
         Console.WriteLine($"Total matches: {data.GetProperty("matchedBlockCount").GetInt32()}");
@@ -365,7 +366,7 @@ class SiyuanTool
 
     async Task<int> CmdSearchDocs(List<string> args)
     {
-        if (!RequireArgs(args, 1, "search-docs <query>")) return 0;
+        if (!RequireArgs(args, 1, "search-docs <query>")) return 1;
         var data = await Api("/filetree/searchDocs", new { k = args[0] });
         foreach (var doc in data.EnumerateArray())
         {
@@ -378,7 +379,7 @@ class SiyuanTool
 
     async Task<int> CmdPath(List<string> args)
     {
-        if (!RequireArgs(args, 1, "path <id>")) return 0;
+        if (!RequireArgs(args, 1, "path <id>")) return 1;
         var data = await Api("/filetree/getHPathByID", new { id = args[0] });
         Console.WriteLine(data.ToString());
         return 0;
@@ -386,7 +387,7 @@ class SiyuanTool
 
     async Task<int> CmdFullPath(List<string> args)
     {
-        if (!RequireArgs(args, 1, "full-path <id>")) return 0;
+        if (!RequireArgs(args, 1, "full-path <id>")) return 1;
         var data = await Api("/filetree/getFullHPathByID", new { id = args[0] });
         Console.WriteLine(data.ToString());
         return 0;
@@ -394,7 +395,7 @@ class SiyuanTool
 
     async Task<int> CmdBreadcrumb(List<string> args)
     {
-        if (!RequireArgs(args, 1, "breadcrumb <id>")) return 0;
+        if (!RequireArgs(args, 1, "breadcrumb <id>")) return 1;
         var data = await Api("/block/getBlockBreadcrumb", new { id = args[0] });
         PrintJson(data);
         return 0;
@@ -402,7 +403,7 @@ class SiyuanTool
 
     async Task<int> CmdOutline(List<string> args)
     {
-        if (!RequireArgs(args, 1, "outline <id>")) return 0;
+        if (!RequireArgs(args, 1, "outline <id>")) return 1;
         var data = await Api("/outline/getDocOutline", new { id = args[0] });
         if (data.ValueKind == JsonValueKind.Null) { Console.WriteLine("(no outline)"); return 0; }
         foreach (var h in data.EnumerateArray())
@@ -417,7 +418,7 @@ class SiyuanTool
 
     async Task<int> CmdCreate(List<string> args)
     {
-        if (!RequireArgs(args, 2, "create <notebook> <path> [--parent <parentID>]")) return 0;
+        if (!RequireArgs(args, 2, "create <notebook> <path> [--parent <parentID>]")) return 1;
         var box = GetNotebookId(args[0]);
         var childName = SanitizePath(args[1]).TrimStart('/');
 
@@ -439,7 +440,7 @@ class SiyuanTool
         }
 
         var md = Console.IsInputRedirected ? await Console.In.ReadToEndAsync() : "";
-        if (string.IsNullOrWhiteSpace(md)) { Console.Error.WriteLine("No markdown content provided on stdin"); return 0; }
+        if (string.IsNullOrWhiteSpace(md)) { Console.Error.WriteLine("No markdown content provided on stdin"); return 1; }
 
         var body = new Dictionary<string, object> { ["notebook"] = box, ["path"] = path, ["markdown"] = md };
         if (parentId is not null) body["parentID"] = parentId;
@@ -450,11 +451,11 @@ class SiyuanTool
 
     async Task<int> CmdUpdateMd(List<string> args)
     {
-        if (!RequireArgs(args, 1, "update-md <id>")) return 0;
+        if (!RequireArgs(args, 1, "update-md <id>")) return 1;
         var id = args[0];
 
         var md = Console.IsInputRedirected ? await Console.In.ReadToEndAsync() : "";
-        if (string.IsNullOrWhiteSpace(md)) { Console.Error.WriteLine("No markdown content provided on stdin"); return 0; }
+        if (string.IsNullOrWhiteSpace(md)) { Console.Error.WriteLine("No markdown content provided on stdin"); return 1; }
 
         await Api("/block/updateBlock", new { dataType = "markdown", data = md, id });
 
@@ -471,7 +472,7 @@ class SiyuanTool
 
     async Task<int> CmdRename(List<string> args)
     {
-        if (!RequireArgs(args, 2, "rename <id> <title>")) return 0;
+        if (!RequireArgs(args, 2, "rename <id> <title>")) return 1;
         await Api("/filetree/renameDocByID", new { id = args[0], title = args[1] });
         Console.WriteLine($"Renamed {args[0]} -> {args[1]}");
         return 0;
@@ -491,7 +492,7 @@ class SiyuanTool
 
     async Task<int> CmdRaw(List<string> args)
     {
-        if (!RequireArgs(args, 1, "raw <endpoint> [json]")) return 0;
+        if (!RequireArgs(args, 1, "raw <endpoint> [json]")) return 1;
         var endpoint = args[0].TrimStart('.');
         if (!endpoint.StartsWith('/')) endpoint = "/" + endpoint;
         object payload = "{}";
@@ -508,7 +509,7 @@ class SiyuanTool
 
     async Task<int> CmdDuplicate(List<string> args)
     {
-        if (!RequireArgs(args, 1, "duplicate <id>")) return 0;
+        if (!RequireArgs(args, 1, "duplicate <id>")) return 1;
         var data = await Api("/filetree/duplicateDoc", new { id = args[0] });
         Console.WriteLine($"Duplicated: {data}");
         return 0;
@@ -520,7 +521,7 @@ class SiyuanTool
         if (whereIdx < 0)
         {
             RequireArgs([], 1, "set-attrs-batch <key=value ...> --where <sql where clause>");
-            return 0;
+            return 1;
         }
 
         var attrArgs = args.Take(whereIdx).ToList();
@@ -532,7 +533,7 @@ class SiyuanTool
             var parts = a.Split('=', 2);
             if (parts.Length == 2) attrs[parts[0]] = parts[1];
         }
-        if (attrs.Count == 0) { Console.Error.WriteLine("No attributes specified"); return 0; }
+        if (attrs.Count == 0) { Console.Error.WriteLine("No attributes specified"); return 1; }
 
         var ids = new List<string>();
         int offset = 0;
@@ -571,7 +572,7 @@ class SiyuanTool
 
     async Task<int> CmdOpenNb(List<string> args)
     {
-        if (!RequireArgs(args, 1, "open-nb <notebook>")) return 0;
+        if (!RequireArgs(args, 1, "open-nb <notebook>")) return 1;
         var box = GetNotebookId(args[0]);
         await Api("/notebook/openNotebook", new { notebook = box });
         Console.WriteLine($"Opened: {args[0]}");
@@ -580,7 +581,7 @@ class SiyuanTool
 
     async Task<int> CmdCloseNb(List<string> args)
     {
-        if (!RequireArgs(args, 1, "close-nb <notebook>")) return 0;
+        if (!RequireArgs(args, 1, "close-nb <notebook>")) return 1;
         var box = GetNotebookId(args[0]);
         await Api("/notebook/closeNotebook", new { notebook = box });
         Console.WriteLine($"Closed: {args[0]}");
@@ -589,7 +590,7 @@ class SiyuanTool
 
     async Task<int> CmdRemoveNb(List<string> args)
     {
-        if (!RequireArgs(args, 1, "remove-nb <notebook>")) return 0;
+        if (!RequireArgs(args, 1, "remove-nb <notebook>")) return 1;
         var box = GetNotebookId(args[0]);
         await Api("/notebook/closeNotebook", new { notebook = box });
         await Api("/notebook/removeNotebook", new { notebook = box });
@@ -599,7 +600,7 @@ class SiyuanTool
 
     async Task<int> CmdCreateNb(List<string> args)
     {
-        if (!RequireArgs(args, 1, "create-nb <name>")) return 0;
+        if (!RequireArgs(args, 1, "create-nb <name>")) return 1;
         var data = await Api("/notebook/createNotebook", new { name = args[0] });
         Console.WriteLine($"Created: {data}");
         return 0;
@@ -607,7 +608,7 @@ class SiyuanTool
 
     async Task<int> CmdRenameNb(List<string> args)
     {
-        if (!RequireArgs(args, 2, "rename-nb <notebook> <name>")) return 0;
+        if (!RequireArgs(args, 2, "rename-nb <notebook> <name>")) return 1;
         var box = GetNotebookId(args[0]);
         await Api("/notebook/renameNotebook", new { notebook = box, name = args[1] });
         Console.WriteLine($"Renamed {args[0]} -> {args[1]}");
@@ -616,7 +617,7 @@ class SiyuanTool
 
     async Task<int> CmdGetNbConf(List<string> args)
     {
-        if (!RequireArgs(args, 1, "get-nb-conf <notebook>")) return 0;
+        if (!RequireArgs(args, 1, "get-nb-conf <notebook>")) return 1;
         var box = GetNotebookId(args[0]);
         var data = await Api("/notebook/getNotebookConf", new { notebook = box });
         PrintJson(data);
@@ -625,7 +626,7 @@ class SiyuanTool
 
     async Task<int> CmdSetNbConf(List<string> args)
     {
-        if (!RequireArgs(args, 2, "set-nb-conf <notebook> <confJSON>")) return 0;
+        if (!RequireArgs(args, 2, "set-nb-conf <notebook> <confJSON>")) return 1;
         var box = GetNotebookId(args[0]);
         var conf = JsonSerializer.Deserialize(string.Join(" ", args.Skip(1)), SiyuanJsonContext.Default.JsonElement);
         await Api("/notebook/setNotebookConf", new { notebook = box, conf });
@@ -635,7 +636,7 @@ class SiyuanTool
 
     async Task<int> CmdGetDoc(List<string> args)
     {
-        if (!RequireArgs(args, 1, "get-doc <id>")) return 0;
+        if (!RequireArgs(args, 1, "get-doc <id>")) return 1;
         var data = await Api("/filetree/getDoc", new { id = args[0] });
         PrintJson(data);
         return 0;
@@ -643,7 +644,7 @@ class SiyuanTool
 
     async Task<int> CmdInsertBlock(List<string> args)
     {
-        if (!RequireArgs(args, 3, "insert-block <parentID> <dataType> <data> [--previous ID] [--next ID]")) return 0;
+        if (!RequireArgs(args, 3, "insert-block <parentID> <dataType> <data> [--previous ID] [--next ID]")) return 1;
         var parentID = args[0];
         var dataType = args[1];
         var data = args[2];
@@ -663,7 +664,7 @@ class SiyuanTool
 
     async Task<int> CmdMoveBlock(List<string> args)
     {
-        if (!RequireArgs(args, 1, "move-block <id> [--parent ID] [--previous ID]")) return 0;
+        if (!RequireArgs(args, 1, "move-block <id> [--parent ID] [--previous ID]")) return 1;
         var id = args[0];
         string? parentID = null, previousID = null;
         for (int i = 1; i < args.Count; i++)
@@ -681,7 +682,7 @@ class SiyuanTool
 
     async Task<int> CmdExport(List<string> args)
     {
-        if (!RequireArgs(args, 2, "export <id> <format>")) return 0;
+        if (!RequireArgs(args, 2, "export <id> <format>")) return 1;
         var id = args[0];
         var format = args[1].ToLower();
         var formats = new Dictionary<string, string>
@@ -696,7 +697,7 @@ class SiyuanTool
         if (!formats.TryGetValue(format, out var endpoint))
         {
             Console.Error.WriteLine($"Unsupported format: {format}. Supported: {string.Join(", ", formats.Keys)}");
-            return 0;
+            return 1;
         }
         var data = await Api(endpoint, new { id });
         PrintJson(data);
@@ -705,7 +706,7 @@ class SiyuanTool
 
     async Task<int> CmdAttrs(List<string> args)
     {
-        if (!RequireArgs(args, 1, "attrs <id>")) return 0;
+        if (!RequireArgs(args, 1, "attrs <id>")) return 1;
         var data = await Api("/attr/getBlockAttrs", new { id = args[0] });
         PrintJson(data);
         return 0;
@@ -713,7 +714,7 @@ class SiyuanTool
 
     async Task<int> CmdSetAttrs(List<string> args)
     {
-        if (!RequireArgs(args, 2, "set-attrs <id> <key=value...>")) return 0;
+        if (!RequireArgs(args, 2, "set-attrs <id> <key=value...>")) return 1;
         var id = args[0];
         var attrs = new Dictionary<string, string>();
         foreach (var a in args.Skip(1))
@@ -740,7 +741,7 @@ class SiyuanTool
 
     async Task<int> CmdHistory(List<string> args)
     {
-        if (!RequireArgs(args, 2, "history <notebook> <path>")) return 0;
+        if (!RequireArgs(args, 2, "history <notebook> <path>")) return 1;
         var box = GetNotebookId(args[0]);
         var data = await Api("/history/getDocHistoryContent", new { notebook = box, historyPath = args[1] });
         PrintJson(data);
@@ -772,7 +773,7 @@ class SiyuanTool
 
     async Task<int> CmdBacklinks(List<string> args)
     {
-        if (!RequireArgs(args, 1, "backlinks <id>")) return 0;
+        if (!RequireArgs(args, 1, "backlinks <id>")) return 1;
         var data = await Api("/ref/getBacklink2", new { id = args[0] });
         PrintJson(data);
         return 0;

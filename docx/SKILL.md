@@ -26,7 +26,7 @@ Output: document metadata (title, author, subject, keywords, created, modified) 
 ### Create Document
 
 ```bash
-dotnet run --file <skill-path>/scripts/docx.cs -- create "<path-to-output.docx>" --content "<text content>"
+dotnet run --file <skill-path>/scripts/docx.cs -- create --output "<path-to-output.docx>" --content "<text content>"
 ```
 
 Creates a new .docx file. Use `\n` in content to create multiple paragraphs.

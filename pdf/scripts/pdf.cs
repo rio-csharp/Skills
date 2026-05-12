@@ -74,7 +74,8 @@ class PdfTool
             "img2pdf" => CmdImg2Pdf(rest),
             "weave" => CmdWeave(rest),
             "stamp" => CmdStamp(rest),
-            "images" or "pdf2img" or "ocr" => Fail($"{cmd}: not supported by this C# helper. Use a dedicated rendering/OCR tool when true image extraction, page rendering, or OCR is required."),
+            "images" or "render" => Fail($"{cmd}: not supported by this C# helper. Use scripts/extract_images.py with uv run --with pymupdf python."),
+            "pdf2img" or "ocr" => Fail($"{cmd}: not supported by this C# helper. Use a dedicated rendering/OCR tool when page rendering or OCR is required."),
             _ => Fail($"Unknown command: {cmd}")
         };
     }
@@ -663,11 +664,40 @@ class PdfTool
 
     string? Arg(string longForm, string shortForm, string[] args)
     {
+        if (string.IsNullOrEmpty(longForm) && string.IsNullOrEmpty(shortForm))
+        {
+            return FirstPositional(args);
+        }
+
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] == longForm || (!string.IsNullOrEmpty(shortForm) && args[i] == shortForm))
                 return i + 1 < args.Length ? args[i + 1] : null;
         }
+        return null;
+    }
+
+    string? FirstPositional(string[] args)
+    {
+        var optionsWithValues = new HashSet<string>
+        {
+            "--input", "-i", "--output", "-o", "--range", "--mode", "--angle",
+            "--text", "--password", "--owner", "--level", "--title", "--author",
+            "--subject", "--keywords", "--donor", "--mapping", "--pos", "--font",
+            "--page", "--fmt"
+        };
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (optionsWithValues.Contains(arg))
+            {
+                i++;
+                continue;
+            }
+            if (!arg.StartsWith("-")) return arg;
+        }
+
         return null;
     }
 
@@ -781,6 +811,7 @@ class PdfTool
         Console.Error.WriteLine();
         Console.Error.WriteLine("Usage: pdf <command> [options]");
         Console.Error.WriteLine("Commands: info, text, pages, merge, split, rotate, watermark, compress, encrypt, decrypt, metadata, bookmarks, img2pdf, weave, stamp");
+        Console.Error.WriteLine("Python helper commands: images, render");
         return 1;
     }
 }
