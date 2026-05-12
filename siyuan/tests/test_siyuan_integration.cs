@@ -83,12 +83,7 @@ static class Program
             var docId = FindDocIdFromListing(_createdNotebookId, "Test Doc");
             if (docId.Length == 0)
             {
-                var docs = await Api(http, "/query/sql", new { stmt = $"SELECT id, content, hpath FROM blocks WHERE type='d' AND box='{_createdNotebookId}' ORDER BY updated DESC LIMIT 10" });
-                docId = docs.EnumerateArray()
-                    .FirstOrDefault(row =>
-                        row.TryGetProperty("content", out var content) && content.GetString() == "Test Doc" ||
-                        row.TryGetProperty("hpath", out var hpath) && (hpath.GetString() ?? "").Contains("Test Doc", StringComparison.Ordinal))
-                    .GetProperty("id").GetString() ?? "";
+                docId = await WaitForDocId(http, _createdNotebookId, "Test Doc");
             }
             Require(docId.Length > 0, "created doc appears in notebook listing or blocks table");
 
@@ -114,9 +109,7 @@ static class Program
             var duplicate = RunTool("duplicate", docId);
             Require(duplicate.ExitCode == 0, "duplicate exits 0", duplicate.ToDebugString());
             var duplicateRows = await Api(http, "/query/sql", new { stmt = $"SELECT id FROM blocks WHERE type='d' AND box='{_createdNotebookId}' AND id <> '{docId}' LIMIT 1" });
-            _duplicatedDocId = duplicateRows.EnumerateArray().FirstOrDefault().ValueKind == JsonValueKind.Object
-                ? duplicateRows.EnumerateArray().First().GetProperty("id").GetString() ?? ""
-                : "";
+            _duplicatedDocId = FirstStringProperty(duplicateRows, "id");
             if (_duplicatedDocId.Length > 0)
             {
                 Require(RunTool("rm", _duplicatedDocId).ExitCode == 0, "rm removes duplicated doc");
@@ -133,9 +126,7 @@ static class Program
             Require(insert.ExitCode == 0, "insert-block exits 0", insert.ToDebugString());
 
             var blockRows = await Api(http, "/query/sql", new { stmt = $"SELECT id FROM blocks WHERE root_id='{docId}' AND content LIKE '%Inserted block%' LIMIT 1" });
-            var insertedBlockId = blockRows.EnumerateArray().FirstOrDefault().ValueKind == JsonValueKind.Object
-                ? blockRows.EnumerateArray().First().GetProperty("id").GetString() ?? ""
-                : "";
+            var insertedBlockId = FirstStringProperty(blockRows, "id");
             if (insertedBlockId.Length > 0)
             {
                 Require(RunTool("move-block", insertedBlockId, "--parent", docId).ExitCode == 0, "move-block exits 0");
@@ -283,6 +274,41 @@ static string SerializeAnonymous(object? body)
         {
             return false;
         }
+    }
+
+    static async Task<string> WaitForDocId(HttpClient http, string notebookId, string title)
+    {
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            var docs = await Api(http, "/query/sql", new { stmt = $"SELECT id, content, hpath FROM blocks WHERE type='d' AND box='{notebookId}' ORDER BY updated DESC LIMIT 20" });
+            foreach (var row in docs.EnumerateArray())
+            {
+                if (row.ValueKind != JsonValueKind.Object) continue;
+                var contentMatches = row.TryGetProperty("content", out var content) && content.GetString() == title;
+                var pathMatches = row.TryGetProperty("hpath", out var hpath) && (hpath.GetString() ?? "").Contains(title, StringComparison.Ordinal);
+                if ((contentMatches || pathMatches) && row.TryGetProperty("id", out var id))
+                {
+                    return id.GetString() ?? "";
+                }
+            }
+
+            await Task.Delay(500);
+        }
+
+        return "";
+    }
+
+    static string FirstStringProperty(JsonElement rows, string propertyName)
+    {
+        foreach (var row in rows.EnumerateArray())
+        {
+            if (row.ValueKind == JsonValueKind.Object && row.TryGetProperty(propertyName, out var value))
+            {
+                return value.GetString() ?? "";
+            }
+        }
+
+        return "";
     }
 
     static string FindDocIdFromListing(string notebookId, string title)
