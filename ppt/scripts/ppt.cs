@@ -9,6 +9,7 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Presentation;
 using A = DocumentFormat.OpenXml.Drawing;
+using C = DocumentFormat.OpenXml.Drawing.Charts;
 using P = DocumentFormat.OpenXml.Presentation;
 
 var exitCode = new PptTool().Run(args);
@@ -16,13 +17,24 @@ return exitCode;
 
 class PptTool
 {
+    // ── State ───────────────────────────────────────────────────────────────
     string _currentColor = "";
     string _currentSize = "";
     string _currentFont = "";
     string _currentAlign = "";
+    string _currentLayout = "title-content";
+    string _currentFill = "";
+    string _currentStroke = "";
+    string _currentStrokeWidth = "";
+    string _currentRound = "";
+    long _posX = -1, _posY = -1, _posW = -1, _posH = -1;
     StyleTheme _theme = Themes["default"];
     uint _shapeId = 1;
 
+    const long SlideWidth = 12192000;
+    const long SlideHeight = 6858000;
+
+    // ── Themes ──────────────────────────────────────────────────────────────
     static readonly Dictionary<string, StyleTheme> Themes = new(StringComparer.OrdinalIgnoreCase)
     {
         ["default"] = new StyleTheme
@@ -67,6 +79,46 @@ class PptTool
         }
     };
 
+    // ── Layouts ─────────────────────────────────────────────────────────────
+    static readonly Dictionary<string, LayoutDef> Layouts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["title-content"] = new("title-content", new()
+        {
+            new("TitleShape", 500000, 300000, 11192000, 900000),
+            new("ContentShape", 500000, 1500000, 11192000, 5200000)
+        }),
+        ["title"] = new("title", new()
+        {
+            new("TitleShape", 500000, 300000, 11192000, 6000000)
+        }),
+        ["two-content"] = new("two-content", new()
+        {
+            new("TitleShape", 500000, 300000, 11192000, 900000),
+            new("LeftShape", 500000, 1500000, 5400000, 5200000),
+            new("RightShape", 5900000, 1500000, 5400000, 5200000)
+        }),
+        ["blank"] = new("blank", new()),
+        ["section-header"] = new("section-header", new()
+        {
+            new("TitleShape", 500000, 2000000, 11192000, 1200000),
+            new("SubtitleShape", 500000, 3400000, 11192000, 600000)
+        }),
+        ["title-only"] = new("title-only", new()
+        {
+            new("TitleShape", 500000, 300000, 11192000, 6400000)
+        }),
+        ["comparison"] = new("comparison", new()
+        {
+            new("TitleShape", 500000, 300000, 11192000, 900000),
+            new("LeftHeaderShape", 500000, 1300000, 5400000, 500000),
+            new("LeftShape", 500000, 1900000, 5400000, 4800000),
+            new("RightHeaderShape", 5900000, 1300000, 5400000, 500000),
+            new("RightShape", 5900000, 1900000, 5400000, 4800000)
+        })
+    };
+
+    // ── Entry Point ─────────────────────────────────────────────────────────
+
     public int Run(string[] args)
     {
         if (args.Length == 0) return Fail("No command. Try: ppt read --input file.pptx");
@@ -77,6 +129,15 @@ class PptTool
         {
             "read" => CmdRead(rest),
             "create" => CmdCreate(rest),
+            "modify" => CmdModify(rest),
+            "merge" => CmdMerge(rest),
+            "split" => CmdSplit(rest),
+            "remove" => CmdRemove(rest),
+            "reorder" => CmdReorder(rest),
+            "notes" => CmdNotes(rest),
+            "extract-notes" => CmdExtractNotes(rest),
+            "set-properties" => CmdSetProperties(rest),
+            "export" => CmdExport(rest),
             _ => Fail($"Unknown command: {cmd}")
         };
     }
@@ -132,8 +193,6 @@ class PptTool
         else
             Console.WriteLine($"Warning: unknown style '{styleName}', using default");
 
-        // OpenXml SDK v3.3.0 AddNewPart fails on newly-created PresentationDocument,
-        // so create a blank pptx via System.IO.Packaging first, then open with OpenXml SDK.
         CreateBlankPptx(output);
 
         using var doc = PresentationDocument.Open(output, true);
@@ -156,6 +215,376 @@ class PptTool
         Console.WriteLine("Created: " + Path.GetFullPath(output));
         return 0;
     }
+
+    // ── Modify ──────────────────────────────────────────────────────────────
+
+    int CmdModify(string[] args)
+    {
+        var input = Arg("--input", "-i", args) ?? Positional(args);
+        var output = Arg("--output", "-o", args);
+        var content = Arg("--content", "-c", args);
+        var contentFile = Arg("--content-file", "-cf", args);
+        var fromLines = Flag("--from-lines", "-l", args);
+        var styleName = Arg("--style", "-s", args) ?? "default";
+
+        if (string.IsNullOrEmpty(input)) return Fail("modify: --input required");
+        if (string.IsNullOrEmpty(output)) return Fail("modify: --output required");
+        if (!File.Exists(input)) return Fail($"File not found: {input}");
+
+        if (!string.IsNullOrEmpty(contentFile))
+        {
+            if (!File.Exists(contentFile)) return Fail($"Content file not found: {contentFile}");
+            content = File.ReadAllText(contentFile);
+        }
+
+        if (Themes.TryGetValue(styleName, out var theme))
+            _theme = theme;
+
+        File.Copy(input, output, true);
+        using var doc = PresentationDocument.Open(output, true);
+        var presPart = doc.PresentationPart!;
+        var masterPart = presPart.SlideMasterParts.First();
+        var layoutPart = masterPart.SlideLayoutParts.First();
+
+        if (!string.IsNullOrEmpty(content) && fromLines)
+            ParseLineFormat(content, presPart, layoutPart);
+
+        presPart.Presentation.Save();
+        Console.WriteLine("Modified: " + Path.GetFullPath(output));
+        return 0;
+    }
+
+    // ── Merge ───────────────────────────────────────────────────────────────
+
+    int CmdMerge(string[] args)
+    {
+        var inputs = ArgsMulti("--input", "-i", args);
+        var output = Arg("--output", "-o", args);
+
+        if (inputs.Count == 0) return Fail("merge: at least one --input required");
+        if (string.IsNullOrEmpty(output)) return Fail("merge: --output required");
+        foreach (var input in inputs)
+            if (!File.Exists(input)) return Fail($"File not found: {input}");
+
+        if (File.Exists(output)) File.Delete(output);
+        File.Copy(inputs[0], output, true);
+
+        using var outDoc = PresentationDocument.Open(output, true);
+        var outPresPart = outDoc.PresentationPart!;
+
+        for (int i = 1; i < inputs.Count; i++)
+        {
+            using var srcDoc = PresentationDocument.Open(inputs[i], false);
+            var srcPresPart = srcDoc.PresentationPart!;
+            var srcSlideIds = srcPresPart.Presentation.SlideIdList!.Elements<SlideId>().ToList();
+
+            foreach (var srcSlideId in srcSlideIds)
+            {
+                var srcSlidePart = srcPresPart.GetPartById(srcSlideId.RelationshipId!) as SlidePart;
+                if (srcSlidePart == null) continue;
+
+                var newSlidePart = outPresPart.AddPart(srcSlidePart);
+                var maxId = outPresPart.Presentation.SlideIdList!.Elements<SlideId>()
+                    .Select(s => s.Id?.Value ?? 0u).DefaultIfEmpty(0u).Max();
+                var newSlideId = new SlideId { Id = maxId + 256, RelationshipId = outPresPart.GetIdOfPart(newSlidePart) };
+                outPresPart.Presentation.SlideIdList.Append(newSlideId);
+            }
+        }
+
+        outPresPart.Presentation.Save();
+        Console.WriteLine($"Merged {inputs.Count} presentations into: " + Path.GetFullPath(output));
+        return 0;
+    }
+
+    // ── Split ───────────────────────────────────────────────────────────────
+
+    int CmdSplit(string[] args)
+    {
+        var input = Arg("--input", "-i", args) ?? Positional(args);
+        var output = Arg("--output", "-o", args);
+        var rangeStr = Arg("--range", "-r", args);
+
+        if (string.IsNullOrEmpty(input)) return Fail("split: --input required");
+        if (string.IsNullOrEmpty(output)) return Fail("split: --output required");
+        if (!File.Exists(input)) return Fail($"File not found: {input}");
+
+        using var doc = PresentationDocument.Open(input, false);
+        var slideIds = doc.PresentationPart!.Presentation.SlideIdList!.Elements<SlideId>().ToList();
+        var selected = string.IsNullOrEmpty(rangeStr)
+            ? Enumerable.Range(1, slideIds.Count).ToArray()
+            : ParseRange(rangeStr, slideIds.Count);
+
+        Directory.CreateDirectory(output);
+
+        foreach (var idx in selected)
+        {
+            var slideId = slideIds[idx - 1];
+            var srcSlidePart = doc.PresentationPart.GetPartById(slideId.RelationshipId!) as SlidePart;
+            if (srcSlidePart == null) continue;
+
+            var outPath = Path.Combine(output, $"slide_{idx}.pptx");
+            CreateBlankPptx(outPath);
+
+            using var outDoc = PresentationDocument.Open(outPath, true);
+            var outPresPart = outDoc.PresentationPart!;
+            var newSlidePart = outPresPart.AddPart(srcSlidePart);
+            var newSlideId = new SlideId { Id = 256, RelationshipId = outPresPart.GetIdOfPart(newSlidePart) };
+            outPresPart.Presentation.SlideIdList!.Append(newSlideId);
+            outPresPart.Presentation.Save();
+        }
+
+        Console.WriteLine($"Split {selected.Length} slides to {output}");
+        return 0;
+    }
+
+    // ── Remove ──────────────────────────────────────────────────────────────
+
+    int CmdRemove(string[] args)
+    {
+        var input = Arg("--input", "-i", args) ?? Positional(args);
+        var output = Arg("--output", "-o", args);
+        var rangeStr = Arg("--range", "-r", args);
+
+        if (string.IsNullOrEmpty(input)) return Fail("remove: --input required");
+        if (string.IsNullOrEmpty(output)) return Fail("remove: --output required");
+        if (string.IsNullOrEmpty(rangeStr)) return Fail("remove: --range required");
+        if (!File.Exists(input)) return Fail($"File not found: {input}");
+
+        File.Copy(input, output, true);
+        using var doc = PresentationDocument.Open(output, true);
+        var presPart = doc.PresentationPart!;
+        var slideIds = presPart.Presentation.SlideIdList!.Elements<SlideId>().ToList();
+        var toRemove = ParseRange(rangeStr, slideIds.Count);
+        var toRemoveSet = new HashSet<int>(toRemove);
+
+        foreach (var slideId in slideIds)
+        {
+            var idx = slideIds.IndexOf(slideId) + 1;
+            if (toRemoveSet.Contains(idx))
+                presPart.Presentation.SlideIdList.RemoveChild(slideId);
+        }
+
+        presPart.Presentation.Save();
+        Console.WriteLine("Removed slides: " + string.Join(", ", toRemove));
+        return 0;
+    }
+
+    // ── Reorder ─────────────────────────────────────────────────────────────
+
+    int CmdReorder(string[] args)
+    {
+        var input = Arg("--input", "-i", args) ?? Positional(args);
+        var output = Arg("--output", "-o", args);
+        var orderStr = Arg("--order", null, args);
+
+        if (string.IsNullOrEmpty(input)) return Fail("reorder: --input required");
+        if (string.IsNullOrEmpty(output)) return Fail("reorder: --output required");
+        if (string.IsNullOrEmpty(orderStr)) return Fail("reorder: --order required");
+        if (!File.Exists(input)) return Fail($"File not found: {input}");
+
+        var order = orderStr.Split(',').Select(s => int.Parse(s.Trim())).ToArray();
+
+        File.Copy(input, output, true);
+        using var doc = PresentationDocument.Open(output, true);
+        var presPart = doc.PresentationPart!;
+        var slideIds = presPart.Presentation.SlideIdList!.Elements<SlideId>().ToList();
+
+        if (order.Length != slideIds.Count)
+            return Fail($"Order must specify all {slideIds.Count} slides");
+
+        var expected = Enumerable.Range(1, slideIds.Count).ToArray();
+        if (!order.OrderBy(x => x).SequenceEqual(expected))
+            return Fail("Order must be a permutation of 1.." + slideIds.Count);
+
+        var reordered = order.Select(i => slideIds[i - 1]).ToList();
+        presPart.Presentation.SlideIdList.RemoveAllChildren<SlideId>();
+        foreach (var sid in reordered)
+            presPart.Presentation.SlideIdList.Append(sid);
+
+        presPart.Presentation.Save();
+        Console.WriteLine("Reordered slides: " + string.Join(", ", order));
+        return 0;
+    }
+
+    // ── Notes ───────────────────────────────────────────────────────────────
+
+    int CmdNotes(string[] args)
+    {
+        var input = Arg("--input", "-i", args) ?? Positional(args);
+        var output = Arg("--output", "-o", args);
+        var slideNumStr = Arg("--slide", null, args);
+        var content = Arg("--content", "-c", args);
+
+        if (string.IsNullOrEmpty(input)) return Fail("notes: --input required");
+        if (string.IsNullOrEmpty(output)) return Fail("notes: --output required");
+        if (string.IsNullOrEmpty(slideNumStr)) return Fail("notes: --slide required");
+        if (!int.TryParse(slideNumStr, out var slideNum) || slideNum < 1)
+            return Fail("notes: --slide must be a positive integer");
+        if (!File.Exists(input)) return Fail($"File not found: {input}");
+
+        File.Copy(input, output, true);
+        using var doc = PresentationDocument.Open(output, true);
+        var presPart = doc.PresentationPart!;
+        var slideIds = presPart.Presentation.SlideIdList!.Elements<SlideId>().ToList();
+
+        if (slideNum > slideIds.Count)
+            return Fail($"Slide {slideNum} does not exist (total: {slideIds.Count})");
+
+        var slideId = slideIds[slideNum - 1];
+        var slidePart = presPart.GetPartById(slideId.RelationshipId!) as SlidePart;
+        if (slidePart == null) return Fail("Could not access slide");
+
+        AddNotes(slidePart, content ?? "");
+        presPart.Presentation.Save();
+        Console.WriteLine($"Added notes to slide {slideNum}");
+        return 0;
+    }
+
+    int CmdExtractNotes(string[] args)
+    {
+        var input = Arg("--input", "-i", args) ?? Positional(args);
+        var output = Arg("--output", "-o", args);
+
+        if (string.IsNullOrEmpty(input)) return Fail("extract-notes: --input required");
+        if (string.IsNullOrEmpty(output)) return Fail("extract-notes: --output required");
+        if (!File.Exists(input)) return Fail($"File not found: {input}");
+
+        using var doc = PresentationDocument.Open(input, false);
+        var slideIds = doc.PresentationPart!.Presentation.SlideIdList!.Elements<SlideId>().ToList();
+
+        using var writer = new StreamWriter(output);
+        for (int i = 0; i < slideIds.Count; i++)
+        {
+            var slidePart = doc.PresentationPart.GetPartById(slideIds[i].RelationshipId!) as SlidePart;
+            if (slidePart?.NotesSlidePart == null) continue;
+
+            var texts = slidePart.NotesSlidePart.NotesSlide.Descendants<A.Text>()
+                .Select(t => t.Text)
+                .Where(t => !string.IsNullOrWhiteSpace(t));
+            var noteText = string.Join(" ", texts);
+
+            if (!string.IsNullOrWhiteSpace(noteText))
+            {
+                writer.WriteLine($"--- Slide {i + 1} ---");
+                writer.WriteLine(noteText);
+                writer.WriteLine();
+            }
+        }
+
+        Console.WriteLine("Extracted notes to: " + Path.GetFullPath(output));
+        return 0;
+    }
+
+    // ── Set Properties ──────────────────────────────────────────────────────
+
+    int CmdSetProperties(string[] args)
+    {
+        var input = Arg("--input", "-i", args) ?? Positional(args);
+        var output = Arg("--output", "-o", args);
+        var title = Arg("--title", null, args);
+        var author = Arg("--author", null, args);
+        var subject = Arg("--subject", null, args);
+        var keywords = Arg("--keywords", null, args);
+
+        if (string.IsNullOrEmpty(input)) return Fail("set-properties: --input required");
+        if (!File.Exists(input)) return Fail($"File not found: {input}");
+
+        var outPath = output ?? input;
+        if (outPath != input) File.Copy(input, outPath, true);
+
+        using var doc = PresentationDocument.Open(outPath, true);
+        var props = doc.PackageProperties;
+        if (title != null) props.Title = title;
+        if (author != null) props.Creator = author;
+        if (subject != null) props.Subject = subject;
+        if (keywords != null) props.Keywords = keywords;
+
+        Console.WriteLine("Updated properties: " + Path.GetFullPath(outPath));
+        return 0;
+    }
+
+    // ── Export ──────────────────────────────────────────────────────────────
+
+    int CmdExport(string[] args)
+    {
+        var input = Arg("--input", "-i", args) ?? Positional(args);
+        var output = Arg("--output", "-o", args);
+
+        if (string.IsNullOrEmpty(input)) return Fail("export: --input required");
+        if (string.IsNullOrEmpty(output)) return Fail("export: --output required");
+        if (!File.Exists(input)) return Fail($"File not found: {input}");
+
+        // Try LibreOffice
+        var soffice = FindInPath("soffice") ?? FindInPath("soffice.bin");
+        if (soffice != null)
+        {
+            var outDir = Path.GetDirectoryName(Path.GetFullPath(output))!;
+            var psi = new System.Diagnostics.ProcessStartInfo(soffice)
+            {
+                Arguments = $"--headless --convert-to pdf --outdir \"{outDir}\" \"{Path.GetFullPath(input)}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false
+            };
+            using var proc = System.Diagnostics.Process.Start(psi)!;
+            proc.WaitForExit();
+
+            var expectedTemp = Path.Combine(outDir, Path.GetFileNameWithoutExtension(input) + ".pdf");
+            if (File.Exists(expectedTemp) && expectedTemp != Path.GetFullPath(output))
+                File.Move(expectedTemp, Path.GetFullPath(output), true);
+
+            if (File.Exists(output))
+            {
+                Console.WriteLine("Exported to: " + Path.GetFullPath(output));
+                return 0;
+            }
+        }
+
+        // Try PowerPoint COM on Windows
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                var type = Type.GetTypeFromProgID("PowerPoint.Application");
+                if (type != null)
+                {
+                    dynamic app = Activator.CreateInstance(type)!;
+                    app.Visible = false;
+                    dynamic pres = app.Presentations.Open(Path.GetFullPath(input), WithWindow: false);
+                    pres.SaveAs(Path.GetFullPath(output), 32);
+                    pres.Close();
+                    app.Quit();
+                    Console.WriteLine("Exported to: " + Path.GetFullPath(output));
+                    return 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"PowerPoint COM export failed: {ex.Message}");
+            }
+        }
+
+        return Fail("Export failed. Install LibreOffice or ensure PowerPoint is available.");
+    }
+
+    string? FindInPath(string name)
+    {
+        var paths = Environment.GetEnvironmentVariable("PATH")?.Split(Path.PathSeparator) ?? Array.Empty<string>();
+        var extensions = OperatingSystem.IsWindows()
+            ? (Environment.GetEnvironmentVariable("PATHEXT")?.Split(Path.PathSeparator) ?? new[] { ".exe", ".cmd", ".bat" })
+            : new[] { "" };
+        foreach (var dir in paths)
+        {
+            foreach (var ext in extensions)
+            {
+                var fullPath = Path.Combine(dir, name + ext);
+                if (File.Exists(fullPath)) return fullPath;
+            }
+        }
+        return null;
+    }
+
+    // ── Blank PPTX Workaround ───────────────────────────────────────────────
 
     void CreateBlankPptx(string path)
     {
@@ -198,7 +627,9 @@ class PptTool
     static readonly HashSet<string> KnownCommands = new(StringComparer.OrdinalIgnoreCase)
     {
         "H1","H2","H3","H4","H5","H6","P","B","I","U","S","BI","CODE","QUOTE",
-        "BULLET","NUMBER","HR","BR","TABLE","IMG","COLOR","SIZE","FONT","ALIGN","NEWSLIDE"
+        "BULLET","NUMBER","HR","BR","TABLE","IMG","COLOR","SIZE","FONT","ALIGN","NEWSLIDE",
+        "LAYOUT", "POS", "BGCOLOR", "BGIMAGE", "SHAPE", "FILL", "STROKE", "ROUND",
+        "CHART", "ANIMATE", "TRANSITION"
     };
 
     string? GetLineCommand(string line)
@@ -304,6 +735,17 @@ class PptTool
                 case "SIZE": _currentSize = text.Trim(); break;
                 case "FONT": _currentFont = text.Trim(); break;
                 case "ALIGN": _currentAlign = text.Trim().ToLowerInvariant(); break;
+                case "LAYOUT": _currentLayout = text.Trim().ToLowerInvariant(); break;
+                case "POS": ParsePos(text); break;
+                case "BGCOLOR": SetBackgroundColor(currentSlide, text.Trim()); break;
+                case "BGIMAGE": SetBackgroundImage(currentSlide, presPart, text.Trim()); break;
+                case "SHAPE": ParseShape(currentSlide, text); break;
+                case "FILL": _currentFill = text.Trim(); break;
+                case "STROKE": ParseStroke(text); break;
+                case "ROUND": _currentRound = text.Trim(); break;
+                case "CHART": AddChart(currentSlide, presPart, text); break;
+                case "ANIMATE": AddAnimation(currentSlide, text.Trim().ToLowerInvariant()); break;
+                case "TRANSITION": SetTransition(currentSlide, text.Trim().ToLowerInvariant()); break;
                 default:
                     AddParagraphToSlide(currentSlide, line);
                     break;
@@ -311,7 +753,7 @@ class PptTool
         }
     }
 
-    // ── Slide & Shape Helpers ───────────────────────────────────────────────
+    // ── Slide & Layout ──────────────────────────────────────────────────────
 
     SlidePart CreateSlide(PresentationPart presPart, SlideLayoutPart layoutPart)
     {
@@ -319,7 +761,6 @@ class PptTool
         slidePart.Slide = new Slide(new CommonSlideData(new ShapeTree()));
         slidePart.AddPart(layoutPart);
 
-        // Add background
         var csd = slidePart.Slide.CommonSlideData!;
         csd.Background = new Background(new BackgroundStyleReference { Index = 1001 });
 
@@ -328,7 +769,64 @@ class PptTool
         presPart.Presentation.SlideIdList.Append(slideId);
 
         _shapeId = 1;
+
+        if (Layouts.TryGetValue(_currentLayout, out var layout))
+        {
+            foreach (var shapeDef in layout.Shapes)
+            {
+                CreateTextShape(slidePart, shapeDef.Name, shapeDef.X, shapeDef.Y, shapeDef.Width, shapeDef.Height);
+            }
+        }
+        else
+        {
+            CreateTextShape(slidePart, "TitleShape", 500000, 300000, 11192000, 900000);
+            CreateTextShape(slidePart, "ContentShape", 500000, 1500000, 11192000, 5200000);
+        }
+
         return slidePart;
+    }
+
+    Shape CreateTextShape(SlidePart slidePart, string name, long x, long y, long w, long h)
+    {
+        var shapeTree = slidePart.Slide!.CommonSlideData!.ShapeTree!;
+        var shape = new Shape();
+        shape.NonVisualShapeProperties = new NonVisualShapeProperties(
+            new A.NonVisualDrawingProperties { Id = _shapeId++, Name = name },
+            new A.NonVisualShapeDrawingProperties(new A.ShapeLocks { NoGrouping = true }),
+            new ApplicationNonVisualDrawingProperties()
+        );
+        shape.ShapeProperties = new ShapeProperties(
+            new A.Transform2D(
+                new A.Offset { X = x, Y = y },
+                new A.Extents { Cx = w, Cy = h }
+            )
+        );
+        shape.TextBody = new TextBody(
+            new A.BodyProperties { Wrap = A.TextWrappingValues.Square },
+            new A.ListStyle(),
+            new A.Paragraph()
+        );
+        shapeTree.Append(shape);
+        return shape;
+    }
+
+    Shape GetTextShape(SlidePart slidePart, bool isHeading)
+    {
+        var shapeTree = slidePart.Slide!.CommonSlideData!.ShapeTree!;
+        var shapes = shapeTree.Elements<Shape>().ToList();
+
+        if (isHeading)
+        {
+            var title = shapes.FirstOrDefault(s => s.NonVisualShapeProperties?.NonVisualDrawingProperties?.Name?.Value == "TitleShape");
+            if (title != null) return title;
+        }
+
+        var content = shapes.FirstOrDefault(s =>
+            s.NonVisualShapeProperties?.NonVisualDrawingProperties?.Name?.Value != "TitleShape"
+            && s.TextBody != null);
+        if (content != null) return content;
+
+        return GetOrCreateContentShape(slidePart);
     }
 
     Shape GetOrCreateContentShape(SlidePart slidePart)
@@ -337,25 +835,8 @@ class PptTool
         var existing = shapeTree.Elements<Shape>().FirstOrDefault(s => s.NonVisualShapeProperties?.NonVisualDrawingProperties?.Name?.Value == "ContentShape");
         if (existing != null) return existing;
 
-        var shape = new Shape();
-        shape.NonVisualShapeProperties = new NonVisualShapeProperties(
-            new A.NonVisualDrawingProperties { Id = _shapeId++, Name = "ContentShape" },
-            new A.NonVisualShapeDrawingProperties(new A.ShapeLocks { NoGrouping = true }),
-            new ApplicationNonVisualDrawingProperties()
-        );
-        shape.ShapeProperties = new ShapeProperties(
-            new A.Transform2D(
-                new A.Offset { X = 500000, Y = 1500000 },
-                new A.Extents { Cx = 11192000, Cy = 5200000 }
-            )
-        );
-        shape.TextBody = new TextBody(
-            new A.BodyProperties { Wrap = A.TextWrappingValues.Square },
-            new A.ListStyle(),
-            new A.Paragraph()
-        );
-        shapeTree.Append(shape);
-        return shape;
+        var (x, y, w, h) = GetDefaultOrPos(500000, 1500000, 11192000, 5200000);
+        return CreateTextShape(slidePart, "ContentShape", x, y, w, h);
     }
 
     Shape GetOrCreateTitleShape(SlidePart slidePart)
@@ -364,26 +845,312 @@ class PptTool
         var existing = shapeTree.Elements<Shape>().FirstOrDefault(s => s.NonVisualShapeProperties?.NonVisualDrawingProperties?.Name?.Value == "TitleShape");
         if (existing != null) return existing;
 
-        var shape = new Shape();
-        shape.NonVisualShapeProperties = new NonVisualShapeProperties(
-            new A.NonVisualDrawingProperties { Id = _shapeId++, Name = "TitleShape" },
-            new A.NonVisualShapeDrawingProperties(new A.ShapeLocks { NoGrouping = true }),
-            new ApplicationNonVisualDrawingProperties()
-        );
-        shape.ShapeProperties = new ShapeProperties(
-            new A.Transform2D(
-                new A.Offset { X = 500000, Y = 300000 },
-                new A.Extents { Cx = 11192000, Cy = 900000 }
+        var (x, y, w, h) = GetDefaultOrPos(500000, 300000, 11192000, 900000);
+        return CreateTextShape(slidePart, "TitleShape", x, y, w, h);
+    }
+
+    (long x, long y, long w, long h) GetDefaultOrPos(long dx, long dy, long dw, long dh)
+    {
+        var x = _posX >= 0 ? _posX : dx;
+        var y = _posY >= 0 ? _posY : dy;
+        var w = _posW >= 0 ? _posW : dw;
+        var h = _posH >= 0 ? _posH : dh;
+        _posX = _posY = _posW = _posH = -1;
+        return (x, y, w, h);
+    }
+
+    // ── Positioning ─────────────────────────────────────────────────────────
+
+    void ParsePos(string text)
+    {
+        var parts = text.Split(',', StringSplitOptions.TrimEntries);
+        if (parts.Length >= 1) _posX = ParseLength(parts[0], SlideWidth);
+        if (parts.Length >= 2) _posY = ParseLength(parts[1], SlideHeight);
+        if (parts.Length >= 3) _posW = ParseLength(parts[2], SlideWidth);
+        if (parts.Length >= 4) _posH = ParseLength(parts[3], SlideHeight);
+    }
+
+    long ParseLength(string value, long total)
+    {
+        value = value.Trim();
+        if (value.EndsWith('%'))
+        {
+            if (float.TryParse(value[..^1], out var pct))
+                return (long)(pct / 100f * total);
+        }
+        else if (value.EndsWith("mm", StringComparison.OrdinalIgnoreCase))
+        {
+            if (float.TryParse(value[..^2], out var mm))
+                return (long)(mm * 36000);
+        }
+        else if (long.TryParse(value, out var emu))
+        {
+            return emu;
+        }
+        return 0;
+    }
+
+    // ── Background ──────────────────────────────────────────────────────────
+
+    void SetBackgroundColor(SlidePart slidePart, string color)
+    {
+        var csd = slidePart.Slide!.CommonSlideData!;
+        csd.Background = new Background(
+            new BackgroundProperties(
+                new A.SolidFill(new A.RgbColorModelHex { Val = color.TrimStart('#') })
             )
         );
-        shape.TextBody = new TextBody(
-            new A.BodyProperties { Wrap = A.TextWrappingValues.Square },
-            new A.ListStyle(),
-            new A.Paragraph()
-        );
-        shapeTree.Append(shape);
-        return shape;
     }
+
+    void SetBackgroundImage(SlidePart slidePart, PresentationPart presPart, string imagePath)
+    {
+        if (!File.Exists(imagePath))
+        {
+            Console.WriteLine($"Warning: background image not found: {imagePath}");
+            return;
+        }
+
+        var ext = Path.GetExtension(imagePath).ToLowerInvariant() switch
+        {
+            ".png" => ImagePartType.Png,
+            ".jpg" or ".jpeg" => ImagePartType.Jpeg,
+            ".gif" => ImagePartType.Gif,
+            ".bmp" => ImagePartType.Bmp,
+            _ => ImagePartType.Png
+        };
+        var imagePart = slidePart.AddImagePart(ext);
+        using (var fs = new FileStream(imagePath, FileMode.Open))
+            imagePart.FeedData(fs);
+
+        var csd = slidePart.Slide!.CommonSlideData!;
+        csd.Background = new Background(
+            new BackgroundProperties(
+                new A.BlipFill(
+                    new A.Blip { Embed = slidePart.GetIdOfPart(imagePart) },
+                    new A.Stretch(new A.FillRectangle())
+                )
+            )
+        );
+    }
+
+    // ── Drawing Shapes ──────────────────────────────────────────────────────
+
+    void ParseShape(SlidePart slidePart, string text)
+    {
+        var parts = text.Split(' ', StringSplitOptions.TrimEntries);
+        if (parts.Length == 0) return;
+
+        var shapeType = parts[0].ToLowerInvariant();
+
+        if (shapeType == "rect" && parts.Length >= 2)
+        {
+            var coords = parts[1].Split(',', StringSplitOptions.TrimEntries);
+            if (coords.Length >= 4)
+            {
+                var x = ParseLength(coords[0], SlideWidth);
+                var y = ParseLength(coords[1], SlideHeight);
+                var w = ParseLength(coords[2], SlideWidth);
+                var h = ParseLength(coords[3], SlideHeight);
+                AddRectangle(slidePart, x, y, w, h);
+            }
+        }
+        else if (shapeType == "ellipse" && parts.Length >= 2)
+        {
+            var coords = parts[1].Split(',', StringSplitOptions.TrimEntries);
+            if (coords.Length >= 4)
+            {
+                var x = ParseLength(coords[0], SlideWidth);
+                var y = ParseLength(coords[1], SlideHeight);
+                var w = ParseLength(coords[2], SlideWidth);
+                var h = ParseLength(coords[3], SlideHeight);
+                AddEllipse(slidePart, x, y, w, h);
+            }
+        }
+        else if (shapeType == "line" && parts.Length >= 2)
+        {
+            var coords = parts[1].Split(',', StringSplitOptions.TrimEntries);
+            if (coords.Length >= 4)
+            {
+                var x1 = ParseLength(coords[0], SlideWidth);
+                var y1 = ParseLength(coords[1], SlideHeight);
+                var x2 = ParseLength(coords[2], SlideWidth);
+                var y2 = ParseLength(coords[3], SlideHeight);
+                AddLine(slidePart, x1, y1, x2, y2);
+            }
+        }
+        else if (shapeType == "arrow" && parts.Length >= 2)
+        {
+            var coords = parts[1].Split(',', StringSplitOptions.TrimEntries);
+            if (coords.Length >= 4)
+            {
+                var x1 = ParseLength(coords[0], SlideWidth);
+                var y1 = ParseLength(coords[1], SlideHeight);
+                var x2 = ParseLength(coords[2], SlideWidth);
+                var y2 = ParseLength(coords[3], SlideHeight);
+                AddArrow(slidePart, x1, y1, x2, y2);
+            }
+        }
+
+        _posX = _posY = _posW = _posH = -1;
+        _currentFill = "";
+        _currentStroke = "";
+        _currentStrokeWidth = "";
+        _currentRound = "";
+    }
+
+    void ParseStroke(string text)
+    {
+        var parts = text.Split(',', StringSplitOptions.TrimEntries);
+        if (parts.Length >= 1) _currentStroke = parts[0].Trim();
+        if (parts.Length >= 2) _currentStrokeWidth = parts[1].Trim();
+    }
+
+    void AddRectangle(SlidePart slidePart, long x, long y, long w, long h)
+    {
+        var shapeTree = slidePart.Slide!.CommonSlideData!.ShapeTree!;
+        var shape = new Shape();
+        shape.NonVisualShapeProperties = new NonVisualShapeProperties(
+            new A.NonVisualDrawingProperties { Id = _shapeId++, Name = "Rectangle" + _shapeId },
+            new A.NonVisualShapeDrawingProperties(new A.ShapeLocks()),
+            new ApplicationNonVisualDrawingProperties()
+        );
+
+        var spPr = new ShapeProperties();
+        spPr.Transform2D = new A.Transform2D(
+            new A.Offset { X = x, Y = y },
+            new A.Extents { Cx = w, Cy = h }
+        );
+
+        bool isRounded = !string.IsNullOrEmpty(_currentRound);
+        spPr.Append(new A.PresetGeometry(new A.AdjustValueList())
+        {
+            Preset = isRounded ? A.ShapeTypeValues.Round2SameRectangle : A.ShapeTypeValues.Rectangle
+        });
+
+        if (!string.IsNullOrEmpty(_currentFill))
+        {
+            spPr.Append(new A.SolidFill(new A.RgbColorModelHex { Val = _currentFill.TrimStart('#') }));
+        }
+
+        if (!string.IsNullOrEmpty(_currentStroke))
+        {
+            var outline = new A.Outline();
+            outline.Append(new A.SolidFill(new A.RgbColorModelHex { Val = _currentStroke.TrimStart('#') }));
+            if (float.TryParse(_currentStrokeWidth, out var sw))
+                outline.Width = (int)(sw * 12700);
+            spPr.Append(outline);
+        }
+
+        shape.ShapeProperties = spPr;
+        shapeTree.Append(shape);
+    }
+
+    void AddEllipse(SlidePart slidePart, long x, long y, long w, long h)
+    {
+        var shapeTree = slidePart.Slide!.CommonSlideData!.ShapeTree!;
+        var shape = new Shape();
+        shape.NonVisualShapeProperties = new NonVisualShapeProperties(
+            new A.NonVisualDrawingProperties { Id = _shapeId++, Name = "Ellipse" + _shapeId },
+            new A.NonVisualShapeDrawingProperties(new A.ShapeLocks()),
+            new ApplicationNonVisualDrawingProperties()
+        );
+
+        var spPr = new ShapeProperties();
+        spPr.Transform2D = new A.Transform2D(
+            new A.Offset { X = x, Y = y },
+            new A.Extents { Cx = w, Cy = h }
+        );
+        spPr.Append(new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Ellipse });
+
+        if (!string.IsNullOrEmpty(_currentFill))
+        {
+            spPr.Append(new A.SolidFill(new A.RgbColorModelHex { Val = _currentFill.TrimStart('#') }));
+        }
+
+        if (!string.IsNullOrEmpty(_currentStroke))
+        {
+            var outline = new A.Outline();
+            outline.Append(new A.SolidFill(new A.RgbColorModelHex { Val = _currentStroke.TrimStart('#') }));
+            if (float.TryParse(_currentStrokeWidth, out var sw))
+                outline.Width = (int)(sw * 12700);
+            spPr.Append(outline);
+        }
+
+        shape.ShapeProperties = spPr;
+        shapeTree.Append(shape);
+    }
+
+    void AddLine(SlidePart slidePart, long x1, long y1, long x2, long y2)
+    {
+        var shapeTree = slidePart.Slide!.CommonSlideData!.ShapeTree!;
+        var shape = new Shape();
+        shape.NonVisualShapeProperties = new NonVisualShapeProperties(
+            new A.NonVisualDrawingProperties { Id = _shapeId++, Name = "Line" + _shapeId },
+            new A.NonVisualShapeDrawingProperties(new A.ShapeLocks()),
+            new ApplicationNonVisualDrawingProperties()
+        );
+
+        var spPr = new ShapeProperties();
+        spPr.Transform2D = new A.Transform2D(
+            new A.Offset { X = Math.Min(x1, x2), Y = Math.Min(y1, y2) },
+            new A.Extents { Cx = Math.Abs(x2 - x1), Cy = Math.Abs(y2 - y1) }
+        );
+        spPr.Append(new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Line });
+
+        var outline = new A.Outline();
+        if (!string.IsNullOrEmpty(_currentStroke))
+            outline.Append(new A.SolidFill(new A.RgbColorModelHex { Val = _currentStroke.TrimStart('#') }));
+        else
+            outline.Append(new A.SolidFill(new A.RgbColorModelHex { Val = "000000" }));
+        if (float.TryParse(_currentStrokeWidth, out var sw))
+            outline.Width = (int)(sw * 12700);
+        else
+            outline.Width = 12700;
+        spPr.Append(outline);
+
+        shape.ShapeProperties = spPr;
+        shapeTree.Append(shape);
+    }
+
+    void AddArrow(SlidePart slidePart, long x1, long y1, long x2, long y2)
+    {
+        var shapeTree = slidePart.Slide!.CommonSlideData!.ShapeTree!;
+        var shape = new Shape();
+        shape.NonVisualShapeProperties = new NonVisualShapeProperties(
+            new A.NonVisualDrawingProperties { Id = _shapeId++, Name = "Arrow" + _shapeId },
+            new A.NonVisualShapeDrawingProperties(new A.ShapeLocks()),
+            new ApplicationNonVisualDrawingProperties()
+        );
+
+        var spPr = new ShapeProperties();
+        spPr.Transform2D = new A.Transform2D(
+            new A.Offset { X = Math.Min(x1, x2), Y = Math.Min(y1, y2) },
+            new A.Extents { Cx = Math.Abs(x2 - x1), Cy = Math.Abs(y2 - y1) }
+        );
+        spPr.Append(new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Line });
+
+        var outline = new A.Outline();
+        if (!string.IsNullOrEmpty(_currentStroke))
+            outline.Append(new A.SolidFill(new A.RgbColorModelHex { Val = _currentStroke.TrimStart('#') }));
+        else
+            outline.Append(new A.SolidFill(new A.RgbColorModelHex { Val = "000000" }));
+        if (float.TryParse(_currentStrokeWidth, out var sw))
+            outline.Width = (int)(sw * 12700);
+        else
+            outline.Width = 12700;
+        outline.Append(new A.HeadEnd
+        {
+            Type = A.LineEndValues.Arrow,
+            Width = A.LineEndWidthValues.Medium,
+            Length = A.LineEndLengthValues.Medium
+        });
+        spPr.Append(outline);
+
+        shape.ShapeProperties = spPr;
+        shapeTree.Append(shape);
+    }
+
+    // ── Text Helpers ────────────────────────────────────────────────────────
 
     void AddTextToSlide(SlidePart slidePart, string text, int fontSizeHundredths)
     {
@@ -400,7 +1167,7 @@ class PptTool
     void AddHeading(SlidePart slidePart, int level, string text)
     {
         var size = level switch { 1 => _theme.Heading1Size, 2 => _theme.Heading2Size, 3 => _theme.Heading3Size, 4 => _theme.Heading4Size, 5 => _theme.Heading5Size, _ => _theme.Heading6Size };
-        var shape = level <= 2 ? GetOrCreateTitleShape(slidePart) : GetOrCreateContentShape(slidePart);
+        var shape = GetTextShape(slidePart, isHeading: level <= 2);
         var para = new A.Paragraph();
         var run = new A.Run(new A.Text(text));
         var rPr = new A.RunProperties { Language = "en-US", FontSize = size * 100, Bold = _theme.HeadingBold };
@@ -446,7 +1213,6 @@ class PptTool
             {
                 Language = "en-US",
                 FontSize = _theme.CodeSize * 100,
-                // Typeface set via LatinFont below
             };
             rPr.Append(new A.SolidFill(new A.RgbColorModelHex { Val = "333333" }));
             run.PrependChild(rPr);
@@ -595,16 +1361,29 @@ class PptTool
             if (parts[1].EndsWith('%'))
             {
                 if (float.TryParse(parts[1][..^1], out var pct))
-                    cx = (long)(pct / 100f * 11192000);
+                    cx = (long)(pct / 100f * SlideWidth);
             }
-            else if (float.TryParse(parts[1], out var mm))
+            else if (parts[1].EndsWith("mm", StringComparison.OrdinalIgnoreCase))
             {
-                cx = (long)(mm * 360000);
+                if (float.TryParse(parts[1][..^2], out var mm))
+                    cx = (long)(mm * 36000);
+            }
+            else if (float.TryParse(parts[1], out var mmRaw))
+            {
+                cx = (long)(mmRaw * 36000);
             }
         }
-        if (parts.Length > 2 && float.TryParse(parts[2], out var hmm))
+        if (parts.Length > 2)
         {
-            cy = (long)(hmm * 360000);
+            if (parts[2].EndsWith("mm", StringComparison.OrdinalIgnoreCase))
+            {
+                if (float.TryParse(parts[2][..^2], out var mm))
+                    cy = (long)(mm * 36000);
+            }
+            else if (float.TryParse(parts[2], out var hmm))
+            {
+                cy = (long)(hmm * 36000);
+            }
         }
 
         try
@@ -629,8 +1408,13 @@ class PptTool
                 new ApplicationNonVisualDrawingProperties()
             );
             picture.BlipFill = new BlipFill(new A.Blip { Embed = slidePart.GetIdOfPart(imagePart) }, new A.Stretch(new A.FillRectangle()));
+
+            long imgX = _posX >= 0 ? _posX : 500000;
+            long imgY = _posY >= 0 ? _posY : 3000000;
+            _posX = _posY = _posW = _posH = -1;
+
             picture.ShapeProperties = new ShapeProperties(new A.Transform2D(
-                new A.Offset { X = 500000, Y = 3000000 },
+                new A.Offset { X = imgX, Y = imgY },
                 new A.Extents { Cx = cx, Cy = cy }
             ));
             shapeTree.Append(picture);
@@ -652,6 +1436,418 @@ class PptTool
             "justify" => A.TextAlignmentTypeValues.Justified,
             _ => A.TextAlignmentTypeValues.Left
         };
+    }
+
+    // ── Notes ───────────────────────────────────────────────────────────────
+
+    void AddNotes(SlidePart slidePart, string text)
+    {
+        if (slidePart.NotesSlidePart == null)
+        {
+            var notesPart = slidePart.AddNewPart<NotesSlidePart>();
+            notesPart.NotesSlide = new NotesSlide(
+                new CommonSlideData(
+                    new ShapeTree(
+                        new P.Shape(
+                            new NonVisualShapeProperties(
+                                new A.NonVisualDrawingProperties { Id = 2, Name = "Notes Placeholder 1" },
+                                new A.NonVisualShapeDrawingProperties(),
+                                new ApplicationNonVisualDrawingProperties(new PlaceholderShape { Type = PlaceholderValues.Body })
+                            ),
+                            new ShapeProperties(),
+                            new TextBody(
+                                new A.BodyProperties(),
+                                new A.ListStyle(),
+                                new A.Paragraph(new A.Run(new A.Text(text)))
+                            )
+                        )
+                    )
+                )
+            );
+        }
+        else
+        {
+            var shapeTree = slidePart.NotesSlidePart.NotesSlide.CommonSlideData.ShapeTree;
+            var placeholder = shapeTree.Elements<P.Shape>().FirstOrDefault();
+            if (placeholder != null)
+            {
+                placeholder.TextBody = new TextBody(
+                    new A.BodyProperties(),
+                    new A.ListStyle(),
+                    new A.Paragraph(new A.Run(new A.Text(text)))
+                );
+            }
+        }
+    }
+
+    // ── Range Parser ────────────────────────────────────────────────────────
+
+    int[] ParseRange(string range, int max)
+    {
+        var result = new List<int>();
+        var parts = range.Split(',', StringSplitOptions.TrimEntries);
+
+        foreach (var part in parts)
+        {
+            if (part.Contains('-'))
+            {
+                var bounds = part.Split('-', StringSplitOptions.TrimEntries);
+                if (bounds.Length == 2
+                    && int.TryParse(bounds[0], out var start)
+                    && int.TryParse(bounds[1], out var end))
+                {
+                    for (int i = Math.Max(1, start); i <= Math.Min(max, end); i++)
+                        result.Add(i);
+                }
+            }
+            else if (int.TryParse(part, out var n))
+            {
+                if (n >= 1 && n <= max)
+                    result.Add(n);
+            }
+        }
+
+        return result.Distinct().OrderBy(x => x).ToArray();
+    }
+
+    // ── Charts ──────────────────────────────────────────────────────────────
+
+    void AddChart(SlidePart slidePart, PresentationPart presPart, string text)
+    {
+        var parts = text.Split(' ', StringSplitOptions.TrimEntries);
+        if (parts.Length < 2) return;
+
+        var chartType = parts[0].ToLowerInvariant();
+        var dataStr = string.Join(" ", parts.Skip(1));
+        var dataParts = dataStr.Split(';');
+        if (dataParts.Length < 3) return;
+
+        var title = dataParts[0].Trim();
+        var categories = dataParts[1].Split(',', StringSplitOptions.TrimEntries);
+        var values = dataParts[2].Split(',', StringSplitOptions.TrimEntries)
+            .Select(v => double.TryParse(v, out var d) ? d : 0).ToArray();
+
+        var chartPart = slidePart.AddNewPart<ChartPart>();
+        C.Chart chart;
+
+        switch (chartType)
+        {
+            case "pie": chart = BuildPieChart(title, categories, values); break;
+            case "line": chart = BuildLineChart(title, categories, values); break;
+            case "area": chart = BuildAreaChart(title, categories, values); break;
+            case "bar": chart = BuildBarChart(title, categories, values, horizontal: true); break;
+            case "column":
+            default: chart = BuildBarChart(title, categories, values, horizontal: false); break;
+        }
+
+        chartPart.ChartSpace = new C.ChartSpace(chart);
+
+        var shapeTree = slidePart.Slide!.CommonSlideData!.ShapeTree!;
+        var graphicFrame = new GraphicFrame();
+        graphicFrame.NonVisualGraphicFrameProperties = new NonVisualGraphicFrameProperties(
+            new A.NonVisualDrawingProperties { Id = _shapeId++, Name = "ChartFrame" },
+            new A.NonVisualGraphicFrameDrawingProperties(),
+            new ApplicationNonVisualDrawingProperties()
+        );
+
+        long chartX = _posX >= 0 ? _posX : 500000;
+        long chartY = _posY >= 0 ? _posY : 2000000;
+        long chartW = _posW >= 0 ? _posW : 11192000;
+        long chartH = _posH >= 0 ? _posH : 4500000;
+        _posX = _posY = _posW = _posH = -1;
+
+        graphicFrame.Transform = new Transform(
+            new A.Offset { X = chartX, Y = chartY },
+            new A.Extents { Cx = chartW, Cy = chartH }
+        );
+
+        var gd = new A.GraphicData();
+        gd.Uri = "http://schemas.openxml.org/drawingml/2006/chart";
+        gd.Append(new C.ChartReference { Id = slidePart.GetIdOfPart(chartPart) });
+        graphicFrame.Graphic = new A.Graphic(gd);
+        shapeTree.Append(graphicFrame);
+    }
+
+    C.Chart BuildBarChart(string title, string[] categories, double[] values, bool horizontal)
+    {
+        var barChart = new C.BarChart(
+            new C.BarDirection { Val = horizontal ? C.BarDirectionValues.Bar : C.BarDirectionValues.Column },
+            new C.BarGrouping { Val = C.BarGroupingValues.Clustered },
+            CreateBarSeries(title, categories, values, 0),
+            new C.AxisId { Val = 1 },
+            new C.AxisId { Val = 2 }
+        );
+        return new C.Chart(
+            new C.PlotArea(barChart, CreateCategoryAxis(1, 2), CreateValueAxis(2, 1)),
+            new C.Legend(new C.LegendPosition { Val = C.LegendPositionValues.Bottom }),
+            new C.EditingLanguage { Val = "en-US" }
+        );
+    }
+
+    C.Chart BuildPieChart(string title, string[] categories, double[] values)
+    {
+        var pieChart = new C.PieChart(CreatePieSeries(title, categories, values, 0));
+        return new C.Chart(
+            new C.PlotArea(pieChart),
+            new C.Legend(new C.LegendPosition { Val = C.LegendPositionValues.Bottom }),
+            new C.EditingLanguage { Val = "en-US" }
+        );
+    }
+
+    C.Chart BuildLineChart(string title, string[] categories, double[] values)
+    {
+        var lineChart = new C.LineChart(
+            new C.Grouping { Val = C.GroupingValues.Standard },
+            CreateLineSeries(title, categories, values, 0),
+            new C.AxisId { Val = 1 },
+            new C.AxisId { Val = 2 }
+        );
+        return new C.Chart(
+            new C.PlotArea(lineChart, CreateCategoryAxis(1, 2), CreateValueAxis(2, 1)),
+            new C.Legend(new C.LegendPosition { Val = C.LegendPositionValues.Bottom }),
+            new C.EditingLanguage { Val = "en-US" }
+        );
+    }
+
+    C.Chart BuildAreaChart(string title, string[] categories, double[] values)
+    {
+        var areaChart = new C.AreaChart(
+            new C.Grouping { Val = C.GroupingValues.Standard },
+            CreateAreaSeries(title, categories, values, 0),
+            new C.AxisId { Val = 1 },
+            new C.AxisId { Val = 2 }
+        );
+        return new C.Chart(
+            new C.PlotArea(areaChart, CreateCategoryAxis(1, 2), CreateValueAxis(2, 1)),
+            new C.Legend(new C.LegendPosition { Val = C.LegendPositionValues.Bottom }),
+            new C.EditingLanguage { Val = "en-US" }
+        );
+    }
+
+    C.BarChartSeries CreateBarSeries(string title, string[] categories, double[] values, uint index)
+    {
+        var series = new C.BarChartSeries(
+            new C.Index { Val = index },
+            new C.Order { Val = index },
+            new C.SeriesText(new C.NumericValue { Text = title })
+        );
+        var stringLit = new C.StringLiteral(new C.PointCount { Val = (uint)categories.Length });
+        for (int i = 0; i < categories.Length; i++)
+            stringLit.Append(new C.StringPoint(new C.NumericValue { Text = categories[i] }) { Index = (uint)i });
+        series.Append(new C.CategoryAxisData(stringLit));
+        var numLit = new C.NumberLiteral(new C.FormatCode("General"), new C.PointCount { Val = (uint)values.Length });
+        for (int i = 0; i < values.Length; i++)
+            numLit.Append(new C.NumericPoint(new C.NumericValue { Text = values[i].ToString() }) { Index = (uint)i });
+        series.Append(new C.Values(numLit));
+        return series;
+    }
+
+    C.PieChartSeries CreatePieSeries(string title, string[] categories, double[] values, uint index)
+    {
+        var series = new C.PieChartSeries(
+            new C.Index { Val = index },
+            new C.Order { Val = index },
+            new C.SeriesText(new C.NumericValue { Text = title })
+        );
+        var stringLit = new C.StringLiteral(new C.PointCount { Val = (uint)categories.Length });
+        for (int i = 0; i < categories.Length; i++)
+            stringLit.Append(new C.StringPoint(new C.NumericValue { Text = categories[i] }) { Index = (uint)i });
+        series.Append(new C.CategoryAxisData(stringLit));
+        var numLit = new C.NumberLiteral(new C.FormatCode("General"), new C.PointCount { Val = (uint)values.Length });
+        for (int i = 0; i < values.Length; i++)
+            numLit.Append(new C.NumericPoint(new C.NumericValue { Text = values[i].ToString() }) { Index = (uint)i });
+        series.Append(new C.Values(numLit));
+        return series;
+    }
+
+    C.LineChartSeries CreateLineSeries(string title, string[] categories, double[] values, uint index)
+    {
+        var series = new C.LineChartSeries(
+            new C.Index { Val = index },
+            new C.Order { Val = index },
+            new C.SeriesText(new C.NumericValue { Text = title })
+        );
+        var stringLit = new C.StringLiteral(new C.PointCount { Val = (uint)categories.Length });
+        for (int i = 0; i < categories.Length; i++)
+            stringLit.Append(new C.StringPoint(new C.NumericValue { Text = categories[i] }) { Index = (uint)i });
+        series.Append(new C.CategoryAxisData(stringLit));
+        var numLit = new C.NumberLiteral(new C.FormatCode("General"), new C.PointCount { Val = (uint)values.Length });
+        for (int i = 0; i < values.Length; i++)
+            numLit.Append(new C.NumericPoint(new C.NumericValue { Text = values[i].ToString() }) { Index = (uint)i });
+        series.Append(new C.Values(numLit));
+        return series;
+    }
+
+    C.AreaChartSeries CreateAreaSeries(string title, string[] categories, double[] values, uint index)
+    {
+        var series = new C.AreaChartSeries(
+            new C.Index { Val = index },
+            new C.Order { Val = index },
+            new C.SeriesText(new C.NumericValue { Text = title })
+        );
+        var stringLit = new C.StringLiteral(new C.PointCount { Val = (uint)categories.Length });
+        for (int i = 0; i < categories.Length; i++)
+            stringLit.Append(new C.StringPoint(new C.NumericValue { Text = categories[i] }) { Index = (uint)i });
+        series.Append(new C.CategoryAxisData(stringLit));
+        var numLit = new C.NumberLiteral(new C.FormatCode("General"), new C.PointCount { Val = (uint)values.Length });
+        for (int i = 0; i < values.Length; i++)
+            numLit.Append(new C.NumericPoint(new C.NumericValue { Text = values[i].ToString() }) { Index = (uint)i });
+        series.Append(new C.Values(numLit));
+        return series;
+    }
+
+    C.CategoryAxis CreateCategoryAxis(uint id, uint crossId)
+    {
+        return new C.CategoryAxis(
+            new C.AxisId { Val = id },
+            new C.Scaling(new C.Orientation { Val = C.OrientationValues.MinMax }),
+            new C.Delete { Val = false },
+            new C.AxisPosition { Val = C.AxisPositionValues.Bottom },
+            new C.TickLabelPosition { Val = C.TickLabelPositionValues.NextTo },
+            new C.CrossingAxis { Val = crossId },
+            new C.Crosses { Val = C.CrossesValues.AutoZero }
+        );
+    }
+
+    C.ValueAxis CreateValueAxis(uint id, uint crossId)
+    {
+        return new C.ValueAxis(
+            new C.AxisId { Val = id },
+            new C.Scaling(new C.Orientation { Val = C.OrientationValues.MinMax }),
+            new C.Delete { Val = false },
+            new C.AxisPosition { Val = C.AxisPositionValues.Left },
+            new C.TickLabelPosition { Val = C.TickLabelPositionValues.NextTo },
+            new C.CrossingAxis { Val = crossId },
+            new C.Crosses { Val = C.CrossesValues.AutoZero }
+        );
+    }
+
+    // ── Animations ──────────────────────────────────────────────────────────
+
+    void AddAnimation(SlidePart slidePart, string animType)
+    {
+        var slide = slidePart.Slide!;
+        var shapeTree = slide.CommonSlideData!.ShapeTree!;
+        var lastShape = shapeTree.Elements<Shape>().LastOrDefault();
+        if (lastShape == null) return;
+
+        var shapeId = lastShape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value ?? 1;
+
+        if (slide.Timing == null)
+            slide.Timing = new Timing();
+
+        var timeNodeList = slide.Timing.TimeNodeList ?? new TimeNodeList();
+        slide.Timing.TimeNodeList = timeNodeList;
+
+        var rootPar = timeNodeList.Elements<ParallelTimeNode>().FirstOrDefault();
+        if (rootPar == null)
+        {
+            rootPar = new ParallelTimeNode(
+                new CommonTimeNode(
+                    new ChildTimeNodeList()
+                ) { Id = 1, Duration = "indefinite", Restart = TimeNodeRestartValues.Never, NodeType = TimeNodeValues.TmingRoot }
+            );
+            timeNodeList.Append(rootPar);
+        }
+
+        var mainSeq = rootPar.CommonTimeNode.ChildTimeNodeList!.Elements<SequenceTimeNode>().FirstOrDefault();
+        if (mainSeq == null)
+        {
+            mainSeq = new SequenceTimeNode(
+                new CommonTimeNode(
+                    new ChildTimeNodeList()
+                ) { Id = 2, Duration = "indefinite", NodeType = TimeNodeValues.MainSequence }
+            ) { Concurrent = true, NextAction = NextActionValues.Seek };
+            rootPar.CommonTimeNode.ChildTimeNodeList.Append(mainSeq);
+        }
+
+        var effectId = (uint)(100 + shapeId);
+        var effectPar = new ParallelTimeNode(
+            new CommonTimeNode(
+                new ChildTimeNodeList()
+            ) { Id = effectId, Fill = TimeNodeFillValues.Hold, NodeType = TimeNodeValues.ClickEffect }
+        );
+
+        var behavior = CreateAnimationBehavior(animType, shapeId);
+        if (behavior != null)
+            effectPar.CommonTimeNode.ChildTimeNodeList!.Append(behavior);
+
+        mainSeq.CommonTimeNode.ChildTimeNodeList!.Append(effectPar);
+    }
+
+    OpenXmlElement? CreateAnimationBehavior(string animType, uint shapeId)
+    {
+        var target = new TargetElement(new ShapeTarget { ShapeId = shapeId.ToString() });
+
+        switch (animType)
+        {
+            case "appear":
+                return new SetBehavior(
+                    new CommonBehavior(
+                        new CommonTimeNode(
+                            new StartConditionList(new Condition { Event = TriggerEventValues.OnClick })
+                        ) { Id = (uint)(200 + shapeId), Duration = "1", Fill = TimeNodeFillValues.Hold },
+                        target,
+                        new AttributeNameList(new AttributeName("style.visibility"))
+                    ),
+                    new ToVariantValue(new StringVariantValue { Val = "visible" })
+                );
+            case "flyin":
+                return new Animate(
+                    new CommonBehavior(
+                        new CommonTimeNode(
+                            new StartConditionList(new Condition { Event = TriggerEventValues.OnClick })
+                        ) { Id = (uint)(200 + shapeId), Duration = "500", Fill = TimeNodeFillValues.Hold },
+                        target,
+                        new AttributeNameList(new AttributeName("ppt_x"))
+                    ),
+                    new ToVariantValue(new StringVariantValue { Val = "0.5" })
+                );
+            case "fade":
+            default:
+                return new SetBehavior(
+                    new CommonBehavior(
+                        new CommonTimeNode(
+                            new StartConditionList(new Condition { Event = TriggerEventValues.OnClick })
+                        ) { Id = (uint)(200 + shapeId), Duration = "1", Fill = TimeNodeFillValues.Hold },
+                        target,
+                        new AttributeNameList(new AttributeName("style.visibility"))
+                    ),
+                    new ToVariantValue(new StringVariantValue { Val = "visible" })
+                );
+        }
+    }
+
+    // ── Transitions ─────────────────────────────────────────────────────────
+
+    void SetTransition(SlidePart slidePart, string transType)
+    {
+        var transition = new Transition();
+        switch (transType)
+        {
+            case "fade": transition.Append(new FadeTransition()); break;
+            case "push": transition.Append(new PushTransition()); break;
+            case "wipe": transition.Append(new WipeTransition()); break;
+            case "split": transition.Append(new SplitTransition()); break;
+            case "uncover": transition.Append(new PullTransition()); break;
+            case "cover": transition.Append(new CoverTransition()); break;
+            case "random": transition.Append(new RandomTransition()); break;
+            case "newsflash": transition.Append(new NewsflashTransition()); break;
+            case "dissolve": transition.Append(new DissolveTransition()); break;
+            case "checker": transition.Append(new CheckerTransition()); break;
+            case "comb": transition.Append(new CombTransition()); break;
+            case "cut": transition.Append(new CutTransition()); break;
+            case "zoom": transition.Append(new ZoomTransition()); break;
+            case "blinds": transition.Append(new BlindsTransition()); break;
+            case "circle": transition.Append(new CircleTransition()); break;
+            case "diamond": transition.Append(new DiamondTransition()); break;
+            case "plus": transition.Append(new PlusTransition()); break;
+            case "strips": transition.Append(new StripsTransition()); break;
+            case "wedge": transition.Append(new WedgeTransition()); break;
+            case "wheel": transition.Append(new WheelTransition()); break;
+            default: transition.Append(new FadeTransition()); break;
+        }
+        slidePart.Slide!.Transition = transition;
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────
@@ -682,7 +1878,7 @@ class PptTool
 
     string? Positional(string[] args)
     {
-        var optionsWithValues = new HashSet<string> { "--input", "-i", "--output", "-o", "--content", "-c", "--content-file", "-cf", "--style", "-s" };
+        var optionsWithValues = new HashSet<string> { "--input", "-i", "--output", "-o", "--content", "-c", "--content-file", "-cf", "--style", "-s", "--range", "-r", "--order", "--slide", "--title", "--author", "--subject", "--keywords" };
         for (int i = 0; i < args.Length; i++)
         {
             var arg = args[i];
@@ -692,15 +1888,42 @@ class PptTool
         return null;
     }
 
+    List<string> ArgsMulti(string longForm, string shortForm, string[] args)
+    {
+        var result = new List<string>();
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] == longForm || (!string.IsNullOrEmpty(shortForm) && args[i] == shortForm))
+            {
+                i++;
+                while (i < args.Length && !args[i].StartsWith("-"))
+                {
+                    result.Add(args[i]);
+                    i++;
+                }
+                i--;
+            }
+        }
+        // Also collect positional args if no -i flag found
+        if (result.Count == 0)
+        {
+            var pos = Positional(args);
+            if (pos != null) result.Add(pos);
+        }
+        return result;
+    }
+
     int Fail(string msg)
     {
         Console.Error.WriteLine("ERROR: " + msg);
         Console.Error.WriteLine();
         Console.Error.WriteLine("Usage: ppt <command> [options]");
-        Console.Error.WriteLine("Commands: read, create");
+        Console.Error.WriteLine("Commands: read, create, modify, merge, split, remove, reorder, notes, extract-notes, set-properties, export");
         return 1;
     }
 }
+
+// ── Data Classes ────────────────────────────────────────────────────────────
 
 class StyleTheme
 {
@@ -726,3 +1949,6 @@ class StyleTheme
     public bool HeadingBold { get; set; } = true;
     public bool TableBorders { get; set; } = true;
 }
+
+record ShapeDef(string Name, long X, long Y, long Width, long Height);
+record LayoutDef(string Name, List<ShapeDef> Shapes);

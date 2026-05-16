@@ -77,6 +77,130 @@ try
         RunTool("unknown", "-i", "test.pptx").RequireFailure("Unknown command");
     }, ref passed);
 
+    Pass("create with layout", () =>
+    {
+        var layoutPptx = Path.Combine(testDir, "layout.pptx");
+        var lines = "LAYOUT title-only\nH1 Full Title\nNEWSLIDE\nLAYOUT two-content\nH1 Two Columns\nP Left content";
+        RunTool("create", "--output", layoutPptx, "--content", lines, "--from-lines").RequireSuccess();
+        Require(File.Exists(layoutPptx), "layout create should write a PPTX file");
+
+        var readOut = RunTool("read", "-i", layoutPptx);
+        readOut.RequireSuccess();
+        Require(readOut.StdOut.Contains("slides: 2", StringComparison.Ordinal), "layout should produce 2 slides");
+        Require(readOut.StdOut.Contains("Full Title", StringComparison.Ordinal), "should include title text");
+    }, ref passed);
+
+    Pass("create with background color", () =>
+    {
+        var bgPptx = Path.Combine(testDir, "bg.pptx");
+        var lines = "BGCOLOR #336699\nH1 Blue Background";
+        RunTool("create", "--output", bgPptx, "--content", lines, "--from-lines").RequireSuccess();
+        Require(File.Exists(bgPptx), "bg create should write a PPTX file");
+    }, ref passed);
+
+    Pass("create with shapes", () =>
+    {
+        var shapePptx = Path.Combine(testDir, "shapes.pptx");
+        var lines = "LAYOUT blank\nSHAPE rect 10%,10%,30%,20%\nFILL #FF0000\nSTROKE #000000,2\nSHAPE ellipse 50%,10%,20%,20%\nFILL #00FF00\nSHAPE line 10%,50%,40%,50%\nSTROKE #0000FF,3\nSHAPE arrow 50%,50%,80%,50%\nSTROKE #0000FF,3";
+        RunTool("create", "--output", shapePptx, "--content", lines, "--from-lines").RequireSuccess();
+        Require(File.Exists(shapePptx), "shape create should write a PPTX file");
+    }, ref passed);
+
+    Pass("modify existing pptx", () =>
+    {
+        var basePptx = Path.Combine(testDir, "modify_base.pptx");
+        var outPptx = Path.Combine(testDir, "modify_out.pptx");
+        RunTool("create", "--output", basePptx, "--content", "H1 Original\nP Content", "--from-lines").RequireSuccess();
+        RunTool("modify", "-i", basePptx, "-o", outPptx, "--content", "NEWSLIDE\nH1 Appended\nP New content", "--from-lines").RequireSuccess();
+
+        var readOut = RunTool("read", "-i", outPptx);
+        readOut.RequireSuccess();
+        Require(readOut.StdOut.Contains("slides: 2", StringComparison.Ordinal), "modify should produce 2 slides");
+        Require(readOut.StdOut.Contains("Appended", StringComparison.Ordinal), "should include appended text");
+    }, ref passed);
+
+    Pass("merge presentations", () =>
+    {
+        var aPptx = Path.Combine(testDir, "merge_a.pptx");
+        var bPptx = Path.Combine(testDir, "merge_b.pptx");
+        var outPptx = Path.Combine(testDir, "merge_out.pptx");
+        RunTool("create", "--output", aPptx, "--content", "H1 A", "--from-lines").RequireSuccess();
+        RunTool("create", "--output", bPptx, "--content", "H1 B", "--from-lines").RequireSuccess();
+        RunTool("merge", "-i", aPptx, bPptx, "-o", outPptx).RequireSuccess();
+
+        var readOut = RunTool("read", "-i", outPptx);
+        readOut.RequireSuccess();
+        Require(readOut.StdOut.Contains("slides: 2", StringComparison.Ordinal), "merge should produce 2 slides");
+    }, ref passed);
+
+    Pass("remove slides", () =>
+    {
+        var basePptx = Path.Combine(testDir, "remove_base.pptx");
+        var outPptx = Path.Combine(testDir, "remove_out.pptx");
+        var lines = "H1 Slide 1\nNEWSLIDE\nH1 Slide 2\nNEWSLIDE\nH1 Slide 3";
+        RunTool("create", "--output", basePptx, "--content", lines, "--from-lines").RequireSuccess();
+        RunTool("remove", "-i", basePptx, "-o", outPptx, "--range", "2").RequireSuccess();
+
+        var readOut = RunTool("read", "-i", outPptx);
+        readOut.RequireSuccess();
+        Require(readOut.StdOut.Contains("slides: 2", StringComparison.Ordinal), "remove should produce 2 slides");
+    }, ref passed);
+
+    Pass("reorder slides", () =>
+    {
+        var basePptx = Path.Combine(testDir, "reorder_base.pptx");
+        var outPptx = Path.Combine(testDir, "reorder_out.pptx");
+        var lines = "H1 Slide 1\nNEWSLIDE\nH1 Slide 2\nNEWSLIDE\nH1 Slide 3";
+        RunTool("create", "--output", basePptx, "--content", lines, "--from-lines").RequireSuccess();
+        RunTool("reorder", "-i", basePptx, "-o", outPptx, "--order", "3,2,1").RequireSuccess();
+
+        var readOut = RunTool("read", "-i", outPptx);
+        readOut.RequireSuccess();
+        Require(readOut.StdOut.Contains("slides: 3", StringComparison.Ordinal), "reorder should preserve 3 slides");
+    }, ref passed);
+
+    Pass("add and extract notes", () =>
+    {
+        var basePptx = Path.Combine(testDir, "notes_base.pptx");
+        var outPptx = Path.Combine(testDir, "notes_out.pptx");
+        var notesTxt = Path.Combine(testDir, "notes.txt");
+        RunTool("create", "--output", basePptx, "--content", "H1 Hello", "--from-lines").RequireSuccess();
+        RunTool("notes", "-i", basePptx, "-o", outPptx, "--slide", "1", "--content", "Speaker note here").RequireSuccess();
+        RunTool("extract-notes", "-i", outPptx, "-o", notesTxt).RequireSuccess();
+        Require(File.Exists(notesTxt), "extract-notes should write a text file");
+        var content = File.ReadAllText(notesTxt);
+        Require(content.Contains("Speaker note here", StringComparison.Ordinal), "notes should contain the note text");
+    }, ref passed);
+
+    Pass("set properties", () =>
+    {
+        var basePptx = Path.Combine(testDir, "props_base.pptx");
+        var outPptx = Path.Combine(testDir, "props_out.pptx");
+        RunTool("create", "--output", basePptx, "--content", "H1 Hello", "--from-lines").RequireSuccess();
+        RunTool("set-properties", "-i", basePptx, "-o", outPptx, "--title", "My Title", "--author", "Me").RequireSuccess();
+        Require(File.Exists(outPptx), "set-properties should write a PPTX file");
+    }, ref passed);
+
+    Pass("create with chart", () =>
+    {
+        var chartPptx = Path.Combine(testDir, "chart.pptx");
+        var lines = "H1 Sales\nCHART bar Sales;Q1,Q2,Q3,Q4;10,20,30,40\nNEWSLIDE\nH1 Share\nCHART pie Share;A,B,C;40,35,25\nNEWSLIDE\nH1 Trend\nCHART line Trend;Jan,Feb,Mar;5,10,15\nNEWSLIDE\nH1 Growth\nCHART area Growth;X,Y,Z;1,2,3";
+        RunTool("create", "--output", chartPptx, "--content", lines, "--from-lines").RequireSuccess();
+        Require(File.Exists(chartPptx), "chart create should write a PPTX file");
+
+        var readOut = RunTool("read", "-i", chartPptx);
+        readOut.RequireSuccess();
+        Require(readOut.StdOut.Contains("slides: 4", StringComparison.Ordinal), "chart should produce 4 slides");
+    }, ref passed);
+
+    Pass("create with animation and transition", () =>
+    {
+        var animPptx = Path.Combine(testDir, "anim.pptx");
+        var lines = "H1 Slide 1\nP Content\nANIMATE fade\nTRANSITION push";
+        RunTool("create", "--output", animPptx, "--content", lines, "--from-lines").RequireSuccess();
+        Require(File.Exists(animPptx), "animation create should write a PPTX file");
+    }, ref passed);
+
     Console.WriteLine($"PASS ppt smoke ({passed} checks)");
     return 0;
 }
