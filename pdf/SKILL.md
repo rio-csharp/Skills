@@ -15,7 +15,7 @@ Prefer absolute paths for inputs and outputs when working outside the current di
 
 ## Start Here
 
-1. **Identify the task**: info, text, pages, merge, split, rotate, watermark, compress, encrypt, decrypt, metadata, bookmarks, img2pdf, weave, stamp, images, or render.
+1. **Identify the task**: info, text, pages, merge, split, rotate, watermark, compress, encrypt, decrypt, metadata, bookmarks, img2pdf, weave, stamp, create, images, or render.
 2. **Pick the right helper**: Most tasks use the C# helper. `images` and `render` require the Python helper (`extract_images.py`).
 3. **Run the command** with required options (`-i` for input, `-o` for output).
 4. **Validate** the output file exists and looks correct.
@@ -39,6 +39,7 @@ Prefer absolute paths for inputs and outputs when working outside the current di
 | `img2pdf` | Convert image files into PDF pages. | `-i <image1> [image2...] -o <pdf>` |
 | `weave` | Insert donor PDF pages into a main PDF after mapped main pages. | `-i <main.pdf> --donor <donor.pdf> --mapping <pages> -o <pdf>` |
 | `stamp` | Add text such as page numbers, headers, or footers. | `-i <pdf> --text <template> -o <pdf>` |
+| `create` | Create a new PDF from line-by-line formatting commands with a theme. | `-o <pdf> --content <lines> --from-lines` |
 | `images` | Extract embedded images from a PDF using the Python PyMuPDF helper. | `-i <pdf> -o <dir>` |
 | `render` | Render PDF pages as PNG images using the Python PyMuPDF helper. | `-i <pdf> -o <dir>` |
 
@@ -81,6 +82,12 @@ dotnet run --file <skill-root>/scripts/pdf.cs -- metadata -i input.pdf --title "
 # Convert images to a PDF.
 dotnet run --file <skill-root>/scripts/pdf.cs -- img2pdf -i page1.png page2.jpg -o images.pdf
 
+# Create a styled PDF from line commands.
+dotnet run --file <skill-root>/scripts/pdf.cs -- create --output report.pdf --content "H1 Report\nP Summary here.\nBULLET Point 1\nBULLET Point 2" --from-lines --style modern
+
+# Create a PDF with a table and code block.
+dotnet run --file <skill-root>/scripts/pdf.cs -- create --output doc.pdf --content-file lines.txt --from-lines --style report
+
 # Extract embedded images from a PDF.
 uv run --with pymupdf python <skill-root>/scripts/extract_images.py images -i input.pdf -o images_dir
 
@@ -90,12 +97,71 @@ uv run --with pymupdf python <skill-root>/scripts/extract_images.py render -i in
 
 ## Workflow
 
-1. **Inspect**: Use `info` to understand page count, version, and metadata before modifying.
-2. **Extract**: Use `text` for text extraction, `images` or `render` for visual content.
-3. **Manipulate**: Use `pages`, `merge`, `split`, `rotate`, or `weave` to reorganize content.
-4. **Enhance**: Use `watermark`, `stamp`, or `metadata` to add annotations or properties.
-5. **Protect**: Use `encrypt` or `compress` to secure or optimize the file.
-6. **Validate**: Check output file exists, has expected page count, and opens correctly.
+1. **Create**: Use `create` with `--from-lines` to generate new styled PDFs.
+2. **Inspect**: Use `info` to understand page count, version, and metadata before modifying.
+3. **Extract**: Use `text` for text extraction, `images` or `render` for visual content.
+4. **Manipulate**: Use `pages`, `merge`, `split`, `rotate`, or `weave` to reorganize content.
+5. **Enhance**: Use `watermark`, `stamp`, or `metadata` to add annotations or properties.
+6. **Protect**: Use `encrypt` or `compress` to secure or optimize the file.
+7. **Validate**: Check output file exists, has expected page count, and opens correctly.
+
+## Line Format Commands
+
+Use `--from-lines` with `create` to build rich PDFs line-by-line. Each line starts with a command followed by a space and content.
+
+| Command | Result |
+|---------|--------|
+| `H1 text` to `H6 text` | Heading (theme-colored, sized) |
+| `P text` | Normal paragraph |
+| `B text` | **Bold** paragraph |
+| `I text` | *Italic* paragraph |
+| `U text` | Underlined paragraph |
+| `S text` | ~~Strikethrough~~ paragraph (simulated) |
+| `BI text` | ***Bold + Italic*** paragraph |
+| `CODE text` | Code block (theme background, monospace font) |
+| `QUOTE text` | Blockquote with left border |
+| `BULLET text` | Bulleted list item |
+| `NUMBER text` | Numbered list item |
+| `HR` | Horizontal rule |
+| `BR` | Empty line (paragraph break). **Use sparingly** — themes already provide paragraph spacing. |
+| `TABLE row1col1,row1col2;row2col1,row2col2` | Table (comma = column, semicolon = row) |
+| `IMG path[,width[,height]]` | Insert image. Width can be `mm` or `N%` of page width. Omit both for auto-fit. Omit height to keep aspect ratio. |
+| `COLOR #RRGGBB` | Set color for following text |
+| `SIZE N` | Set font size in points for following text |
+| `FONT Name` | Set font for following text (use iText7 standard font names) |
+| `ALIGN left` / `ALIGN center` / `ALIGN right` / `ALIGN justify` | Set alignment for following paragraphs |
+
+### Example Line Content
+
+```
+H1 C# Async / Await Guide
+P This is a normal paragraph.
+B This is bold text.
+I This is italic text.
+QUOTE This is a blockquote with left border.
+BULLET First bullet item
+BULLET Second bullet item
+NUMBER First numbered item
+NUMBER Second numbered item
+HR
+CODE public async Task FetchDataAsync() { }
+TABLE Name,Age;Alice,30;Bob,25
+IMG C:\path\to\diagram.png        # auto-fit to page width
+IMG C:\path\to\diagram.png,50%      # 50% of page width, auto height
+IMG C:\path\to\diagram.png,80,40    # fixed 80mm x 40mm
+```
+
+## Built-in Style Themes
+
+| Theme | Heading Color | Heading Font | Body Font | Code Font | Feel |
+|-------|---------------|--------------|-----------|-----------|------|
+| `default` | Blue `#2E74B5` | Helvetica Bold | Helvetica | Courier | Standard business |
+| `report` | Dark Blue `#1F4E79` | Helvetica Bold | Helvetica | Courier | Serious corporate |
+| `modern` | Cyan `#00B4D8` | Helvetica Bold | Helvetica | Courier | Clean modern |
+| `minimal` | Black `#212529` | Helvetica Bold | Helvetica | Courier | Ultra minimal |
+| `elegant` | Charcoal `#4A4A4A` | Times Bold | Times | Courier | Elegant serif |
+
+Each theme controls heading colors, fonts, spacing, table borders, quote styling, and code block appearance. Use `--style` on `create` to choose one. If omitted, `default` is used.
 
 ## Tips
 
@@ -107,18 +173,21 @@ uv run --with pymupdf python <skill-root>/scripts/extract_images.py render -i in
 - `metadata` without write fields reads metadata; with `--title`, `--author`, `--subject`, or `--keywords`, it writes a new PDF.
 - Always use `-o` to write to a new file rather than overwriting the original PDF.
 - For password-protected PDFs, you must provide `--password` to both `encrypt` and `decrypt` commands.
+- `create --content` uses `\n` for line breaks in command-line arguments. For complex documents, use `--content-file` to read from a file.
+- `create --from-lines` supports the same command set as the docx skill (see Line Format Commands below).
+- State commands (`COLOR`, `SIZE`, `FONT`, `ALIGN`) affect all following paragraphs until changed again.
 - `extract_images.py` requires `uv run --with pymupdf python` (not bare `python`) so PyMuPDF is available in the uv-managed environment.
 
 ## Resources
 
-- `scripts/pdf.cs`: bundled C# helper for core PDF operations (info, text, pages, merge, split, rotate, watermark, compress, encrypt, decrypt, metadata, bookmarks, img2pdf, weave, stamp).
+- `scripts/pdf.cs`: bundled C# helper for core PDF operations (info, text, pages, merge, split, rotate, watermark, compress, encrypt, decrypt, metadata, bookmarks, img2pdf, weave, stamp, create).
 - `scripts/extract_images.py`: bundled Python helper for image extraction and page rendering (requires PyMuPDF).
 - `references/format.md`: PDF format internals, helper capabilities, and limitations.
 
 ## Safety
 
 - Read-only operations (`info`, `text`, `bookmarks --list`) do not modify source files.
-- All write operations (`pages`, `merge`, `split`, `rotate`, `watermark`, `compress`, `encrypt`, `decrypt`, `metadata`, `img2pdf`, `weave`, `stamp`) create new files or modify copies when `-o` is used.
+- All write operations (`pages`, `merge`, `split`, `rotate`, `watermark`, `compress`, `encrypt`, `decrypt`, `metadata`, `img2pdf`, `weave`, `stamp`, `create`) create new files or modify copies when `-o` is used.
 - `extract_images.py` validates the input PDF exists before processing.
 - No network operations or credential requirements.
 

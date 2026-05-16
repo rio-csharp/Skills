@@ -156,6 +156,43 @@ try
         Require(Directory.GetFiles(renderDir, "*.png").Length == 3, "render should produce 3 PNG files");
     }, ref passed);
 
+    Pass("create plain text", () =>
+    {
+        var plainPdf = Path.Combine(testDir, "plain.pdf");
+        RunTool("create", "--output", plainPdf, "--content", "Hello\nWorld").RequireSuccess();
+        Require(File.Exists(plainPdf), "create should write a PDF file");
+        Require(PageCount(plainPdf) == 1, "plain text create should produce 1 page");
+    }, ref passed);
+
+    Pass("create from lines", () =>
+    {
+        var styledPdf = Path.Combine(testDir, "styled.pdf");
+        var lines = "H1 Title\nP Normal paragraph.\nB Bold text.\nI Italic text.\nQUOTE A quote.\nBULLET Item 1\nBULLET Item 2\nNUMBER First\nNUMBER Second\nHR\nCODE code block\nTABLE A,B;1,2";
+        RunTool("create", "--output", styledPdf, "--content", lines, "--from-lines").RequireSuccess();
+        Require(File.Exists(styledPdf), "line-format create should write a PDF file");
+        var textOut = Path.Combine(testDir, "styled.txt");
+        RunTool("text", "-i", styledPdf, "-o", textOut).RequireSuccess();
+        var text = File.ReadAllText(textOut);
+        Require(text.Contains("Title", StringComparison.Ordinal), "line-format should include heading text");
+        Require(text.Contains("Bold text.", StringComparison.Ordinal), "line-format should include bold text");
+        Require(text.Contains("Italic text.", StringComparison.Ordinal), "line-format should include italic text");
+        Require(text.Contains("A quote.", StringComparison.Ordinal), "line-format should include quote");
+        Require(text.Contains("Item 1", StringComparison.Ordinal), "line-format should include bullet");
+        Require(text.Contains("First", StringComparison.Ordinal), "line-format should include numbered");
+    }, ref passed);
+
+    Pass("create with theme", () =>
+    {
+        var modernPdf = Path.Combine(testDir, "modern.pdf");
+        RunTool("create", "--output", modernPdf, "--content", "H1 Modern Theme", "--from-lines", "--style", "modern").RequireSuccess();
+        Require(File.Exists(modernPdf), "theme create should write a PDF file");
+    }, ref passed);
+
+    Pass("create missing output fails", () =>
+    {
+        RunTool("create", "--content", "test").RequireFailure("--output required");
+    }, ref passed);
+
     Pass("invalid arguments fail clearly", () =>
     {
         RunTool("pages", "-i", testPdf, "--range", "1-a", "-o", Path.Combine(testDir, "bad-pages.pdf")).RequireFailure("invalid page range");

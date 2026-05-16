@@ -25,6 +25,7 @@ The `pdf.cs` C# helper supports:
 - **Metadata editing** (`metadata`): read or write title, author, subject, keywords
 - **Bookmark listing** (`bookmarks --list`): read top-level outline/bookmarks
 - **Image-to-PDF** (`img2pdf`): convert PNG/JPEG images to PDF pages using ImageSharp + iText7
+- **PDF Creation** (`create`): generate styled PDFs from line-by-line formatting commands with built-in themes (headings, paragraphs, bold/italic, code blocks, quotes, lists, tables, images, colors, fonts, alignment)
 
 The `extract_images.py` Python helper supports:
 

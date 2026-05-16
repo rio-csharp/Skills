@@ -17,6 +17,13 @@ using iText7PdfWriter = iText.Kernel.Pdf.PdfWriter;
 using iText7WriterProperties = iText.Kernel.Pdf.WriterProperties;
 using iText7ReaderProperties = iText.Kernel.Pdf.ReaderProperties;
 using iText7PageSize = iText.Kernel.Geom.PageSize;
+using iText.Layout;
+using iText.Layout.Element;
+using iText.Layout.Properties;
+using iText.Layout.Borders;
+using iText.Kernel.Colors;
+using iText.Kernel.Font;
+using iText.IO.Font.Constants;
 using SixLabors.ImageSharp;
 
 var exitCode = new PdfTool().Run(args);
@@ -51,6 +58,121 @@ sealed record MetadataResult(
 
 class PdfTool
 {
+    string _currentColor = "";
+    string _currentSize = "";
+    string _currentFont = "";
+    string _currentAlign = "";
+    StyleTheme _theme = Themes["default"];
+
+    static readonly Dictionary<string, StyleTheme> Themes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["default"] = new StyleTheme
+        {
+            Name = "default",
+            HeadingColor = "2E74B5",
+            QuoteTextColor = "666666",
+            QuoteBorderColor = "CCCCCC",
+            CodeBackground = "F5F5F5",
+            TableHeaderFill = "D9E2F3",
+            TableBorderColor = "999999",
+            LinkColor = "0563C1",
+            HeadingFont = StandardFonts.HELVETICA_BOLD,
+            BodyFont = StandardFonts.HELVETICA,
+            CodeFont = StandardFonts.COURIER,
+            Heading1Size = 24, Heading2Size = 20, Heading3Size = 18,
+            Heading4Size = 16, Heading5Size = 14, Heading6Size = 12,
+            BodySize = 11, CodeSize = 9,
+            HeadingSpacingBefore = 18, HeadingSpacingAfter = 6,
+            ParagraphSpacingAfter = 8,
+            HeadingBold = true,
+            TableBorders = true
+        },
+        ["report"] = new StyleTheme
+        {
+            Name = "report",
+            HeadingColor = "1F4E79",
+            QuoteTextColor = "5B5B5B",
+            QuoteBorderColor = "A6A6A6",
+            CodeBackground = "F2F2F2",
+            TableHeaderFill = "B4C7E7",
+            TableBorderColor = "7F7F7F",
+            LinkColor = "2E75B6",
+            HeadingFont = StandardFonts.HELVETICA_BOLD,
+            BodyFont = StandardFonts.HELVETICA,
+            CodeFont = StandardFonts.COURIER,
+            Heading1Size = 26, Heading2Size = 22, Heading3Size = 18,
+            Heading4Size = 16, Heading5Size = 14, Heading6Size = 12,
+            BodySize = 10, CodeSize = 9,
+            HeadingSpacingBefore = 16, HeadingSpacingAfter = 4,
+            ParagraphSpacingAfter = 6,
+            HeadingBold = true,
+            TableBorders = true
+        },
+        ["modern"] = new StyleTheme
+        {
+            Name = "modern",
+            HeadingColor = "00B4D8",
+            QuoteTextColor = "495057",
+            QuoteBorderColor = "CED4DA",
+            CodeBackground = "F8F9FA",
+            TableHeaderFill = "E9ECEF",
+            TableBorderColor = "ADB5BD",
+            LinkColor = "0096C7",
+            HeadingFont = StandardFonts.HELVETICA_BOLD,
+            BodyFont = StandardFonts.HELVETICA,
+            CodeFont = StandardFonts.COURIER,
+            Heading1Size = 26, Heading2Size = 22, Heading3Size = 18,
+            Heading4Size = 16, Heading5Size = 14, Heading6Size = 12,
+            BodySize = 10, CodeSize = 9,
+            HeadingSpacingBefore = 20, HeadingSpacingAfter = 6,
+            ParagraphSpacingAfter = 8,
+            HeadingBold = false,
+            TableBorders = true
+        },
+        ["minimal"] = new StyleTheme
+        {
+            Name = "minimal",
+            HeadingColor = "212529",
+            QuoteTextColor = "6C757D",
+            QuoteBorderColor = "DEE2E6",
+            CodeBackground = "F8F9FA",
+            TableHeaderFill = "E9ECEF",
+            TableBorderColor = "ADB5BD",
+            LinkColor = "495057",
+            HeadingFont = StandardFonts.HELVETICA_BOLD,
+            BodyFont = StandardFonts.HELVETICA,
+            CodeFont = StandardFonts.COURIER,
+            Heading1Size = 24, Heading2Size = 20, Heading3Size = 18,
+            Heading4Size = 16, Heading5Size = 14, Heading6Size = 12,
+            BodySize = 10, CodeSize = 9,
+            HeadingSpacingBefore = 14, HeadingSpacingAfter = 4,
+            ParagraphSpacingAfter = 5,
+            HeadingBold = false,
+            TableBorders = false
+        },
+        ["elegant"] = new StyleTheme
+        {
+            Name = "elegant",
+            HeadingColor = "4A4A4A",
+            QuoteTextColor = "7A7A7A",
+            QuoteBorderColor = "C9B99A",
+            CodeBackground = "FDFBF7",
+            TableHeaderFill = "F5F0E8",
+            TableBorderColor = "C9B99A",
+            LinkColor = "8B7355",
+            HeadingFont = StandardFonts.TIMES_BOLD,
+            BodyFont = StandardFonts.TIMES_ROMAN,
+            CodeFont = StandardFonts.COURIER,
+            Heading1Size = 26, Heading2Size = 22, Heading3Size = 18,
+            Heading4Size = 16, Heading5Size = 14, Heading6Size = 12,
+            BodySize = 11, CodeSize = 9,
+            HeadingSpacingBefore = 18, HeadingSpacingAfter = 6,
+            ParagraphSpacingAfter = 8,
+            HeadingBold = true,
+            TableBorders = true
+        }
+    };
+
     public int Run(string[] args)
     {
         if (args.Length == 0) return Fail("No command. Try: pdf info --input file.pdf");
@@ -74,6 +196,7 @@ class PdfTool
             "img2pdf" => CmdImg2Pdf(rest),
             "weave" => CmdWeave(rest),
             "stamp" => CmdStamp(rest),
+            "create" => CmdCreate(rest),
             "images" or "render" => Fail($"{cmd}: not supported by this C# helper. Use scripts/extract_images.py with uv run --with pymupdf python."),
             "pdf2img" or "ocr" => Fail($"{cmd}: not supported by this C# helper. Use a dedicated rendering/OCR tool when page rendering or OCR is required."),
             _ => Fail($"Unknown command: {cmd}")
@@ -660,6 +783,385 @@ class PdfTool
         return 0;
     }
 
+    // ── Create ──────────────────────────────────────────────────────────────
+
+    int CmdCreate(string[] args)
+    {
+        var output = Arg("--output", "-o", args);
+        if (string.IsNullOrEmpty(output)) return Fail("create: --output required");
+        var content = Arg("--content", "-c", args);
+        var contentFile = Arg("--content-file", "-cf", args);
+        var fromLines = ContainsArg("--from-lines", args) || ContainsArg("-l", args);
+        var styleName = Arg("--style", "-s", args) ?? "default";
+
+        if (!string.IsNullOrEmpty(contentFile))
+        {
+            if (!File.Exists(contentFile)) return Fail($"Content file not found: {contentFile}");
+            content = File.ReadAllText(contentFile);
+        }
+
+        if (Themes.TryGetValue(styleName, out var theme))
+            _theme = theme;
+        else
+            Console.WriteLine($"Warning: unknown style '{styleName}', using default");
+
+        using var writer = new iText7PdfWriter(output);
+        using var pdf = new iText7Document(writer);
+        using var document = new Document(pdf);
+        document.SetMargins(60, 60, 60, 60);
+
+        if (!string.IsNullOrEmpty(content))
+        {
+            if (fromLines)
+                ParseLineFormat(content, document);
+            else
+            {
+                var lines = content.Split('\n', StringSplitOptions.None);
+                foreach (var line in lines)
+                {
+                    document.Add(new Paragraph(line)
+                        .SetFont(GetOrCreateFont(_theme.BodyFont))
+                        .SetFontSize(_theme.BodySize)
+                        .SetMarginBottom(_theme.ParagraphSpacingAfter));
+                }
+            }
+        }
+
+        document.Close();
+        Console.WriteLine("Created: " + Path.GetFullPath(output));
+        return 0;
+    }
+
+    // ── Line Format Parser ──────────────────────────────────────────────────
+
+    static readonly HashSet<string> KnownCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "H1","H2","H3","H4","H5","H6","P","B","I","U","S","BI","CODE","QUOTE",
+        "BULLET","NUMBER","HR","BR","TABLE","IMG","COLOR","SIZE","FONT","ALIGN"
+    };
+
+    string? GetLineCommand(string line)
+    {
+        var trimmed = line.TrimStart();
+        if (string.IsNullOrWhiteSpace(trimmed)) return null;
+        var spaceIdx = trimmed.IndexOf(' ');
+        var cmd = spaceIdx < 0 ? trimmed : trimmed[..spaceIdx];
+        return KnownCommands.Contains(cmd) ? cmd.ToUpperInvariant() : null;
+    }
+
+    void ParseLineFormat(string content, Document document)
+    {
+        var lines = content.Split('\n');
+        for (int idx = 0; idx < lines.Length; idx++)
+        {
+            var rawLine = lines[idx];
+            var line = rawLine.TrimEnd();
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            var spaceIdx = line.IndexOf(' ');
+            string cmd, text;
+            if (spaceIdx < 0)
+            {
+                cmd = line.Trim().ToUpperInvariant();
+                text = "";
+            }
+            else
+            {
+                cmd = line[..spaceIdx].Trim().ToUpperInvariant();
+                text = line[(spaceIdx + 1)..];
+            }
+
+            switch (cmd)
+            {
+                case "H1": AddHeading(document, 1, text); break;
+                case "H2": AddHeading(document, 2, text); break;
+                case "H3": AddHeading(document, 3, text); break;
+                case "H4": AddHeading(document, 4, text); break;
+                case "H5": AddHeading(document, 5, text); break;
+                case "H6": AddHeading(document, 6, text); break;
+                case "P": AddFormattedParagraph(document, text); break;
+                case "B": AddFormattedParagraph(document, text, bold: true); break;
+                case "I": AddFormattedParagraph(document, text, italic: true); break;
+                case "U": AddFormattedParagraph(document, text, underline: true); break;
+                case "S": AddFormattedParagraph(document, text, underline: true); break;
+                case "BI": AddFormattedParagraph(document, text, bold: true, italic: true); break;
+                case "CODE":
+                    {
+                        var codeLines = new List<string> { text };
+                        int nextIdx = idx + 1;
+                        while (nextIdx < lines.Length)
+                        {
+                            var nextLine = lines[nextIdx].TrimEnd();
+                            if (string.IsNullOrWhiteSpace(nextLine)) break;
+                            var trimmedNext = nextLine.TrimStart();
+                            if (!trimmedNext.StartsWith("CODE", StringComparison.OrdinalIgnoreCase)) break;
+                            var nextSpaceIdx = trimmedNext.IndexOf(' ');
+                            var nextText = nextSpaceIdx < 0 ? "" : trimmedNext[(nextSpaceIdx + 1)..];
+                            codeLines.Add(nextText);
+                            nextIdx++;
+                        }
+                        AddCodeBlock(document, codeLines);
+                        idx = nextIdx - 1;
+                    }
+                    break;
+                case "QUOTE": AddQuote(document, text); break;
+                case "BULLET": AddBullet(document, text); break;
+                case "NUMBER": AddNumbered(document, text); break;
+                case "HR": AddHorizontalRule(document); break;
+                case "BR": document.Add(new Paragraph("").SetMarginBottom(_theme.ParagraphSpacingAfter)); break;
+                case "TABLE":
+                    {
+                        var tableLines = new List<string> { text };
+                        int nextIdx = idx + 1;
+                        while (nextIdx < lines.Length)
+                        {
+                            var nextLine = lines[nextIdx].TrimEnd();
+                            if (string.IsNullOrWhiteSpace(nextLine)) break;
+                            if (GetLineCommand(nextLine) != null) break;
+                            tableLines.Add(nextLine);
+                            nextIdx++;
+                        }
+                        AddTableFromLine(document, string.Join(";", tableLines));
+                        idx = nextIdx - 1;
+                    }
+                    break;
+                case "IMG": AddImageFromLine(document, text); break;
+                case "COLOR": _currentColor = text.Trim(); break;
+                case "SIZE": _currentSize = text.Trim(); break;
+                case "FONT": _currentFont = text.Trim(); break;
+                case "ALIGN": _currentAlign = text.Trim().ToLowerInvariant(); break;
+                default:
+                    AddFormattedParagraph(document, line);
+                    break;
+            }
+        }
+    }
+
+    void AddHeading(Document doc, int level, string text)
+    {
+        var size = level switch { 1 => _theme.Heading1Size, 2 => _theme.Heading2Size, 3 => _theme.Heading3Size, 4 => _theme.Heading4Size, 5 => _theme.Heading5Size, _ => _theme.Heading6Size };
+        var para = new Paragraph(text)
+            .SetFont(GetOrCreateFont(_theme.HeadingFont))
+            .SetFontSize(size)
+            .SetFontColor(HexToRgb(_theme.HeadingColor))
+            .SetMarginTop(_theme.HeadingSpacingBefore)
+            .SetMarginBottom(_theme.HeadingSpacingAfter);
+        ApplyParaAlign(para);
+        doc.Add(para);
+    }
+
+    void AddFormattedParagraph(Document doc, string text, bool bold = false, bool italic = false, bool underline = false, bool strike = false)
+    {
+        var textEl = new Text(text);
+        if (bold) textEl.SimulateBold();
+        if (italic) textEl.SimulateItalic();
+        if (underline) textEl.SetUnderline();
+        if (!string.IsNullOrEmpty(_currentColor)) textEl.SetFontColor(HexToRgb(_currentColor));
+        if (!string.IsNullOrEmpty(_currentSize) && float.TryParse(_currentSize, out var sz)) textEl.SetFontSize(sz);
+        if (!string.IsNullOrEmpty(_currentFont))
+        {
+            try { textEl.SetFont(GetOrCreateFont(_currentFont)); } catch { }
+        }
+
+        var para = new Paragraph(textEl)
+            .SetFont(GetOrCreateFont(_theme.BodyFont))
+            .SetFontSize(_theme.BodySize)
+            .SetMarginBottom(_theme.ParagraphSpacingAfter);
+        ApplyParaAlign(para);
+        doc.Add(para);
+    }
+
+    void AddCodeBlock(Document doc, List<string> lines)
+    {
+        var table = new Table(1).SetWidth(UnitValue.CreatePercentValue(100));
+        var cell = new Cell()
+            .SetBackgroundColor(HexToRgb(_theme.CodeBackground))
+            .SetPadding(10)
+            .SetBorder(new SolidBorder(HexToRgb("DDDDDD"), 1));
+
+        foreach (var line in lines)
+        {
+            cell.Add(new Paragraph(line)
+                .SetFont(GetOrCreateFont(_theme.CodeFont))
+                .SetFontSize(_theme.CodeSize)
+                .SetFontColor(new DeviceRgb(60, 60, 60))
+                .SetMultipliedLeading(1.3f));
+        }
+        table.AddCell(cell);
+        doc.Add(table);
+        doc.Add(new Paragraph("").SetMarginBottom(_theme.ParagraphSpacingAfter));
+    }
+
+    void AddQuote(Document doc, string text)
+    {
+        var table = new Table(1).SetWidth(UnitValue.CreatePercentValue(100));
+        var cell = new Cell()
+            .SetBorderLeft(new SolidBorder(HexToRgb(_theme.QuoteBorderColor), 4))
+            .SetBackgroundColor(HexToRgb("F8F8F8"))
+            .SetPadding(10)
+            .Add(new Paragraph(text)
+                .SetFont(GetOrCreateFont(_theme.BodyFont))
+                .SetFontSize(_theme.BodySize)
+                .SetFontColor(HexToRgb(_theme.QuoteTextColor))
+                .SetMultipliedLeading(1.4f));
+        table.AddCell(cell);
+        doc.Add(table);
+        doc.Add(new Paragraph("").SetMarginBottom(_theme.ParagraphSpacingAfter));
+    }
+
+    void AddBullet(Document doc, string text)
+    {
+        var list = new List(ListNumberingType.ZAPF_DINGBATS_1)
+            .SetListSymbol("\u2022")
+            .SetFont(GetOrCreateFont(_theme.BodyFont))
+            .SetFontSize(_theme.BodySize)
+            .SetMarginLeft(20)
+            .SetMarginBottom(_theme.ParagraphSpacingAfter);
+        var item = new ListItem();
+        var para = new Paragraph(text).SetFont(GetOrCreateFont(_theme.BodyFont)).SetFontSize(_theme.BodySize);
+        if (!string.IsNullOrEmpty(_currentColor)) para.SetFontColor(HexToRgb(_currentColor));
+        if (!string.IsNullOrEmpty(_currentSize) && float.TryParse(_currentSize, out var sz)) para.SetFontSize(sz);
+        if (!string.IsNullOrEmpty(_currentFont)) para.SetFont(GetOrCreateFont(_currentFont));
+        ApplyParaAlign(para);
+        item.Add(para);
+        list.Add(item);
+        doc.Add(list);
+    }
+
+    void AddNumbered(Document doc, string text)
+    {
+        var list = new List(ListNumberingType.DECIMAL)
+            .SetFont(GetOrCreateFont(_theme.BodyFont))
+            .SetFontSize(_theme.BodySize)
+            .SetMarginLeft(20)
+            .SetMarginBottom(_theme.ParagraphSpacingAfter);
+        var item = new ListItem();
+        var para = new Paragraph(text).SetFont(GetOrCreateFont(_theme.BodyFont)).SetFontSize(_theme.BodySize);
+        if (!string.IsNullOrEmpty(_currentColor)) para.SetFontColor(HexToRgb(_currentColor));
+        if (!string.IsNullOrEmpty(_currentSize) && float.TryParse(_currentSize, out var sz)) para.SetFontSize(sz);
+        if (!string.IsNullOrEmpty(_currentFont)) para.SetFont(GetOrCreateFont(_currentFont));
+        ApplyParaAlign(para);
+        item.Add(para);
+        list.Add(item);
+        doc.Add(list);
+    }
+
+    void AddHorizontalRule(Document doc)
+    {
+        doc.Add(new Paragraph("")
+            .SetBorderBottom(new SolidBorder(HexToRgb("CCCCCC"), 1))
+            .SetWidth(UnitValue.CreatePercentValue(100))
+            .SetMarginTop(8)
+            .SetMarginBottom(8));
+    }
+
+    void AddTableFromLine(Document doc, string text)
+    {
+        var rows = text.Split(';');
+        if (rows.Length == 0) return;
+        var cols = rows[0].Split(',').Length;
+        var table = new Table(cols).SetWidth(UnitValue.CreatePercentValue(100));
+        if (_theme.TableBorders)
+            table.SetBorder(new SolidBorder(HexToRgb(_theme.TableBorderColor), 1));
+
+        for (int r = 0; r < rows.Length; r++)
+        {
+            var cells = rows[r].Split(',');
+            foreach (var c in cells)
+            {
+                var cell = new Cell()
+                    .SetPadding(6)
+                    .Add(new Paragraph(c.Trim()).SetFont(GetOrCreateFont(_theme.BodyFont)).SetFontSize(_theme.BodySize - 1));
+                if (r == 0 && _theme.TableBorders)
+                    cell.SetBackgroundColor(HexToRgb(_theme.TableHeaderFill));
+                table.AddCell(cell);
+            }
+        }
+        doc.Add(table);
+        doc.Add(new Paragraph("").SetMarginBottom(_theme.ParagraphSpacingAfter));
+    }
+
+    void AddImageFromLine(Document doc, string text)
+    {
+        var parts = text.Split(',', StringSplitOptions.TrimEntries);
+        var imgPath = parts[0];
+        if (!File.Exists(imgPath))
+        {
+            Console.WriteLine($"Warning: image not found: {imgPath}");
+            return;
+        }
+
+        float widthPt = 0, heightPt = 0;
+        if (parts.Length > 1)
+        {
+            if (parts[1].EndsWith('%'))
+            {
+                if (float.TryParse(parts[1][..^1], out var pct))
+                    widthPt = pct / 100f * 450;
+            }
+            else if (float.TryParse(parts[1], out var mm))
+            {
+                widthPt = mm * 2.8346f;
+            }
+        }
+        if (parts.Length > 2 && float.TryParse(parts[2], out var hmm))
+        {
+            heightPt = hmm * 2.8346f;
+        }
+
+        try
+        {
+            var imgData = iText.IO.Image.ImageDataFactory.Create(imgPath);
+            var img = new iText.Layout.Element.Image(imgData);
+            if (widthPt > 0 && heightPt > 0)
+                img.SetWidth(widthPt).SetHeight(heightPt);
+            else if (widthPt > 0)
+                img.SetWidth(widthPt);
+            else
+                img.SetAutoScale(true);
+            doc.Add(img);
+            doc.Add(new Paragraph("").SetMarginBottom(_theme.ParagraphSpacingAfter));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: could not add image {imgPath}: {ex.Message}");
+        }
+    }
+
+    DeviceRgb HexToRgb(string hex)
+    {
+        hex = hex.TrimStart('#');
+        if (hex.Length == 6 && int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out var rgb))
+        {
+            return new DeviceRgb((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+        }
+        return new DeviceRgb(0, 0, 0);
+    }
+
+    PdfFont GetOrCreateFont(string fontName)
+    {
+        try
+        {
+            return PdfFontFactory.CreateFont(fontName);
+        }
+        catch
+        {
+            return PdfFontFactory.CreateFont(StandardFonts.HELVETICA);
+        }
+    }
+
+    void ApplyParaAlign(Paragraph para)
+    {
+        if (string.IsNullOrEmpty(_currentAlign)) return;
+        para.SetTextAlignment(_currentAlign switch
+        {
+            "center" => TextAlignment.CENTER,
+            "right" => TextAlignment.RIGHT,
+            "justify" => TextAlignment.JUSTIFIED,
+            _ => TextAlignment.LEFT
+        });
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     string? Arg(string longForm, string shortForm, string[] args)
@@ -810,8 +1312,36 @@ class PdfTool
         Console.Error.WriteLine("ERROR: " + msg);
         Console.Error.WriteLine();
         Console.Error.WriteLine("Usage: pdf <command> [options]");
-        Console.Error.WriteLine("Commands: info, text, pages, merge, split, rotate, watermark, compress, encrypt, decrypt, metadata, bookmarks, img2pdf, weave, stamp");
+        Console.Error.WriteLine("Commands: info, text, pages, merge, split, rotate, watermark, compress, encrypt, decrypt, metadata, bookmarks, img2pdf, weave, stamp, create");
         Console.Error.WriteLine("Python helper commands: images, render");
         return 1;
     }
+}
+
+class StyleTheme
+{
+    public string Name { get; set; } = "default";
+    public string HeadingColor { get; set; } = "2E74B5";
+    public string QuoteTextColor { get; set; } = "666666";
+    public string QuoteBorderColor { get; set; } = "CCCCCC";
+    public string CodeBackground { get; set; } = "F5F5F5";
+    public string TableHeaderFill { get; set; } = "D9E2F3";
+    public string TableBorderColor { get; set; } = "999999";
+    public string LinkColor { get; set; } = "0563C1";
+    public string HeadingFont { get; set; } = StandardFonts.HELVETICA_BOLD;
+    public string BodyFont { get; set; } = StandardFonts.HELVETICA;
+    public string CodeFont { get; set; } = StandardFonts.COURIER;
+    public int Heading1Size { get; set; } = 24;
+    public int Heading2Size { get; set; } = 20;
+    public int Heading3Size { get; set; } = 18;
+    public int Heading4Size { get; set; } = 16;
+    public int Heading5Size { get; set; } = 14;
+    public int Heading6Size { get; set; } = 12;
+    public int BodySize { get; set; } = 11;
+    public int CodeSize { get; set; } = 9;
+    public int HeadingSpacingBefore { get; set; } = 18;
+    public int HeadingSpacingAfter { get; set; } = 6;
+    public int ParagraphSpacingAfter { get; set; } = 8;
+    public bool HeadingBold { get; set; } = true;
+    public bool TableBorders { get; set; } = true;
 }
