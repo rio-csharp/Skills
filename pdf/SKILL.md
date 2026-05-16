@@ -1,17 +1,24 @@
 ---
 name: pdf
-description: Work with PDF files through bundled helpers. Use when Codex needs to inspect PDF metadata, extract text, copy/remove/split/merge pages, rotate pages, add text watermarks or stamps, compress, encrypt/decrypt, read/write metadata, list bookmarks, convert images into a PDF, extract embedded images or render pages as PNG, or weave pages from one PDF into another.
+description: Work with PDF files through bundled helpers for metadata inspection, text extraction, page manipulation, merging, splitting, rotation, watermarking, compression, encryption, image conversion, and more. Use when the user needs to read PDF metadata, extract text or embedded images, copy/remove/reorder/split/merge pages, rotate pages, add text watermarks or stamps, compress or encrypt/decrypt PDFs, convert images to PDF, or render pages as PNG. Do not use for OCR (use a dedicated OCR tool) or creating PDFs from scratch (use the docx skill and convert if needed).
 ---
 
 # PDF
 
-Use the C# helper for deterministic PDF operations:
+Work with PDF files using the bundled C# helper for deterministic operations, and a Python helper for image extraction and page rendering.
 
 ```bash
 dotnet run --file <skill-root>/scripts/pdf.cs -- <command> [options]
 ```
 
 Prefer absolute paths for inputs and outputs when working outside the current directory. Do not overwrite the user's original PDF unless they explicitly ask for in-place replacement.
+
+## Start Here
+
+1. **Identify the task**: info, text, pages, merge, split, rotate, watermark, compress, encrypt, decrypt, metadata, bookmarks, img2pdf, weave, stamp, images, or render.
+2. **Pick the right helper**: Most tasks use the C# helper. `images` and `render` require the Python helper (`extract_images.py`).
+3. **Run the command** with required options (`-i` for input, `-o` for output).
+4. **Validate** the output file exists and looks correct.
 
 ## Commands
 
@@ -35,7 +42,7 @@ Prefer absolute paths for inputs and outputs when working outside the current di
 | `images` | Extract embedded images from a PDF using the Python PyMuPDF helper. | `-i <pdf> -o <dir>` |
 | `render` | Render PDF pages as PNG images using the Python PyMuPDF helper. | `-i <pdf> -o <dir>` |
 
-Unsupported by the C# helper: `images`, `render`, `pdf2img`, and `ocr`. `images` and `render` are supported by `scripts/extract_images.py`; true OCR still needs a dedicated OCR tool. Use `text` only for PDFs that already contain extractable text.
+Unsupported by the C# helper: `pdf2img` and `ocr`. `images` and `render` are supported by `scripts/extract_images.py`; true OCR still needs a dedicated OCR tool. Use `text` only for PDFs that already contain extractable text.
 
 ## Examples
 
@@ -81,7 +88,16 @@ uv run --with pymupdf python <skill-root>/scripts/extract_images.py images -i in
 uv run --with pymupdf python <skill-root>/scripts/extract_images.py render -i input.pdf -o pages_dir --dpi 150
 ```
 
-## Option Notes
+## Workflow
+
+1. **Inspect**: Use `info` to understand page count, version, and metadata before modifying.
+2. **Extract**: Use `text` for text extraction, `images` or `render` for visual content.
+3. **Manipulate**: Use `pages`, `merge`, `split`, `rotate`, or `weave` to reorganize content.
+4. **Enhance**: Use `watermark`, `stamp`, or `metadata` to add annotations or properties.
+5. **Protect**: Use `encrypt` or `compress` to secure or optimize the file.
+6. **Validate**: Check output file exists, has expected page count, and opens correctly.
+
+## Tips
 
 - Page ranges are 1-based and accept forms like `1`, `1-3`, `8-`, and `"1-3 5 8-"`.
 - `img2pdf` treats the first image after `-i` and any following positional image paths as inputs.
@@ -89,7 +105,22 @@ uv run --with pymupdf python <skill-root>/scripts/extract_images.py render -i in
 - `compress --level` accepts `low`, `medium`, or `max`.
 - `stamp --text` supports `{n}` for current page, `{N}` for total pages, and `{d}` for the current date.
 - `metadata` without write fields reads metadata; with `--title`, `--author`, `--subject`, or `--keywords`, it writes a new PDF.
+- Always use `-o` to write to a new file rather than overwriting the original PDF.
+- For password-protected PDFs, you must provide `--password` to both `encrypt` and `decrypt` commands.
 - `extract_images.py` requires `uv run --with pymupdf python` (not bare `python`) so PyMuPDF is available in the uv-managed environment.
+
+## Resources
+
+- `scripts/pdf.cs`: bundled C# helper for core PDF operations (info, text, pages, merge, split, rotate, watermark, compress, encrypt, decrypt, metadata, bookmarks, img2pdf, weave, stamp).
+- `scripts/extract_images.py`: bundled Python helper for image extraction and page rendering (requires PyMuPDF).
+- `references/format.md`: PDF format internals, helper capabilities, and limitations.
+
+## Safety
+
+- Read-only operations (`info`, `text`, `bookmarks --list`) do not modify source files.
+- All write operations (`pages`, `merge`, `split`, `rotate`, `watermark`, `compress`, `encrypt`, `decrypt`, `metadata`, `img2pdf`, `weave`, `stamp`) create new files or modify copies when `-o` is used.
+- `extract_images.py` validates the input PDF exists before processing.
+- No network operations or credential requirements.
 
 ## Validation
 
