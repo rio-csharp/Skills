@@ -27,6 +27,10 @@ class PptTool
     string _currentStroke = "";
     string _currentStrokeWidth = "";
     string _currentRound = "";
+    string _tableBorderColor = "";
+    string _tableBorderWidth = "";
+    bool _tableZebra = false;
+    string _tableHeaderColor = "";
     long _posX = -1, _posY = -1, _posW = -1, _posH = -1;
     StyleTheme _theme = Themes["default"];
     uint _shapeId = 1;
@@ -629,7 +633,8 @@ class PptTool
         "H1","H2","H3","H4","H5","H6","P","B","I","U","S","BI","CODE","QUOTE",
         "BULLET","NUMBER","HR","BR","TABLE","IMG","COLOR","SIZE","FONT","ALIGN","NEWSLIDE",
         "LAYOUT", "POS", "BGCOLOR", "BGIMAGE", "SHAPE", "FILL", "STROKE", "ROUND",
-        "CHART", "ANIMATE", "TRANSITION"
+        "CHART", "ANIMATE", "TRANSITION", "LINK",
+        "TABLE-BORDER", "TABLE-ZEBRA", "TABLE-NO-ZEBRA", "TABLE-HEADER"
     };
 
     string? GetLineCommand(string line)
@@ -746,6 +751,11 @@ class PptTool
                 case "CHART": AddChart(currentSlide, presPart, text); break;
                 case "ANIMATE": AddAnimation(currentSlide, text.Trim().ToLowerInvariant()); break;
                 case "TRANSITION": SetTransition(currentSlide, text.Trim().ToLowerInvariant()); break;
+                case "LINK": AddHyperlink(currentSlide, presPart, text); break;
+                case "TABLE-BORDER": ParseTableBorder(text); break;
+                case "TABLE-ZEBRA": _tableZebra = true; break;
+                case "TABLE-NO-ZEBRA": _tableZebra = false; break;
+                case "TABLE-HEADER": _tableHeaderColor = text.Trim(); break;
                 default:
                     AddParagraphToSlide(currentSlide, line);
                     break;
@@ -1003,6 +1013,13 @@ class PptTool
         var parts = text.Split(',', StringSplitOptions.TrimEntries);
         if (parts.Length >= 1) _currentStroke = parts[0].Trim();
         if (parts.Length >= 2) _currentStrokeWidth = parts[1].Trim();
+    }
+
+    void ParseTableBorder(string text)
+    {
+        var parts = text.Split(',', StringSplitOptions.TrimEntries);
+        if (parts.Length >= 1) _tableBorderColor = parts[0].Trim();
+        if (parts.Length >= 2) _tableBorderWidth = parts[1].Trim();
     }
 
     void AddRectangle(SlidePart slidePart, long x, long y, long w, long h)
@@ -1329,10 +1346,31 @@ class PptTool
                     ),
                     new A.TableCellProperties()
                 );
-                if (r == 0 && _theme.TableBorders)
+                if (r == 0)
                 {
-                    cell.TableCellProperties!.Append(new A.SolidFill(new A.RgbColorModelHex { Val = _theme.TableHeaderFill }));
+                    var headerColor = !string.IsNullOrEmpty(_tableHeaderColor) ? _tableHeaderColor.TrimStart('#') : _theme.TableHeaderFill;
+                    cell.TableCellProperties!.Append(new A.SolidFill(new A.RgbColorModelHex { Val = headerColor }));
                 }
+                else if (_tableZebra && r % 2 == 0)
+                {
+                    cell.TableCellProperties!.Append(new A.SolidFill(new A.RgbColorModelHex { Val = "F2F2F2" }));
+                }
+
+                // Apply cell borders if specified
+                if (!string.IsNullOrEmpty(_tableBorderColor))
+                {
+                    var borderColor = _tableBorderColor.TrimStart('#');
+                    var borderWidth = int.TryParse(_tableBorderWidth, out var bw) ? bw * 12700 : 12700;
+                    var cellBorders = new A.TableCellBorders();
+                    cellBorders.LeftBorder = new A.LeftBorder(new A.Outline(new A.SolidFill(new A.RgbColorModelHex { Val = borderColor })) { Width = borderWidth });
+                    cellBorders.RightBorder = new A.RightBorder(new A.Outline(new A.SolidFill(new A.RgbColorModelHex { Val = borderColor })) { Width = borderWidth });
+                    cellBorders.TopBorder = new A.TopBorder(new A.Outline(new A.SolidFill(new A.RgbColorModelHex { Val = borderColor })) { Width = borderWidth });
+                    cellBorders.BottomBorder = new A.BottomBorder(new A.Outline(new A.SolidFill(new A.RgbColorModelHex { Val = borderColor })) { Width = borderWidth });
+                    cellBorders.InsideHorizontalBorder = new A.InsideHorizontalBorder(new A.Outline(new A.SolidFill(new A.RgbColorModelHex { Val = borderColor })) { Width = borderWidth });
+                    cellBorders.InsideVerticalBorder = new A.InsideVerticalBorder(new A.Outline(new A.SolidFill(new A.RgbColorModelHex { Val = borderColor })) { Width = borderWidth });
+                    cell.TableCellProperties!.Append(cellBorders);
+                }
+
                 row.Append(cell);
             }
             table.Append(row);
@@ -1343,6 +1381,12 @@ class PptTool
         gd.Append(table);
         graphicFrame.Graphic = new A.Graphic(gd);
         shapeTree.Append(graphicFrame);
+
+        // Reset table state
+        _tableBorderColor = "";
+        _tableBorderWidth = "";
+        _tableZebra = false;
+        _tableHeaderColor = "";
     }
 
     void AddImage(SlidePart slidePart, PresentationPart presPart, string text)
@@ -1422,6 +1466,41 @@ class PptTool
         catch (Exception ex)
         {
             Console.WriteLine($"Warning: could not add image {imgPath}: {ex.Message}");
+        }
+    }
+
+    void AddHyperlink(SlidePart slidePart, PresentationPart presPart, string text)
+    {
+        var spaceIdx = text.IndexOf(' ');
+        if (spaceIdx < 0) return;
+        var url = text[..spaceIdx].Trim();
+        var linkText = text[(spaceIdx + 1)..].Trim();
+        if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(linkText)) return;
+
+        try
+        {
+            var uri = new Uri(url, UriKind.Absolute);
+            var rel = slidePart.AddHyperlinkRelationship(uri, true);
+
+            var shape = GetOrCreateContentShape(slidePart);
+            var para = new A.Paragraph();
+            var run = new A.Run(new A.Text(linkText));
+            var rPr = new A.RunProperties
+            {
+                Language = "en-US",
+                FontSize = _theme.BodySize * 100,
+                Underline = A.TextUnderlineValues.Single
+            };
+            rPr.Append(new A.SolidFill(new A.RgbColorModelHex { Val = "0563C1" }));
+            rPr.Append(new A.HyperlinkOnClick { Id = rel.Id });
+            run.PrependChild(rPr);
+            para.Append(run);
+            ApplyParaAlign(para);
+            shape.TextBody!.Append(para);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: could not add hyperlink: {ex.Message}");
         }
     }
 
@@ -1524,20 +1603,36 @@ class PptTool
 
         var title = dataParts[0].Trim();
         var categories = dataParts[1].Split(',', StringSplitOptions.TrimEntries);
-        var values = dataParts[2].Split(',', StringSplitOptions.TrimEntries)
-            .Select(v => double.TryParse(v, out var d) ? d : 0).ToArray();
+
+        // Parse series: each part after categories is either "SeriesName:Val1,Val2" or "Val1,Val2" (backward compat)
+        var seriesList = new List<(string Name, double[] Values)>();
+        for (int i = 2; i < dataParts.Length; i++)
+        {
+            var part = dataParts[i].Trim();
+            var seriesName = $"Series {i - 1}";
+            var valueStr = part;
+            if (part.Contains(':'))
+            {
+                var nameValue = part.Split(':', 2);
+                seriesName = nameValue[0].Trim();
+                valueStr = nameValue[1].Trim();
+            }
+            var values = valueStr.Split(',', StringSplitOptions.TrimEntries)
+                .Select(v => double.TryParse(v, out var d) ? d : 0).ToArray();
+            seriesList.Add((seriesName, values));
+        }
 
         var chartPart = slidePart.AddNewPart<ChartPart>();
         C.Chart chart;
 
         switch (chartType)
         {
-            case "pie": chart = BuildPieChart(title, categories, values); break;
-            case "line": chart = BuildLineChart(title, categories, values); break;
-            case "area": chart = BuildAreaChart(title, categories, values); break;
-            case "bar": chart = BuildBarChart(title, categories, values, horizontal: true); break;
+            case "pie": chart = BuildPieChart(title, categories, seriesList); break;
+            case "line": chart = BuildLineChart(title, categories, seriesList); break;
+            case "area": chart = BuildAreaChart(title, categories, seriesList); break;
+            case "bar": chart = BuildBarChart(title, categories, seriesList, horizontal: true); break;
             case "column":
-            default: chart = BuildBarChart(title, categories, values, horizontal: false); break;
+            default: chart = BuildBarChart(title, categories, seriesList, horizontal: false); break;
         }
 
         chartPart.ChartSpace = new C.ChartSpace(chart);
@@ -1568,15 +1663,16 @@ class PptTool
         shapeTree.Append(graphicFrame);
     }
 
-    C.Chart BuildBarChart(string title, string[] categories, double[] values, bool horizontal)
+    C.Chart BuildBarChart(string title, string[] categories, List<(string Name, double[] Values)> seriesList, bool horizontal)
     {
         var barChart = new C.BarChart(
             new C.BarDirection { Val = horizontal ? C.BarDirectionValues.Bar : C.BarDirectionValues.Column },
-            new C.BarGrouping { Val = C.BarGroupingValues.Clustered },
-            CreateBarSeries(title, categories, values, 0),
-            new C.AxisId { Val = 1 },
-            new C.AxisId { Val = 2 }
+            new C.BarGrouping { Val = C.BarGroupingValues.Clustered }
         );
+        for (uint i = 0; i < seriesList.Count; i++)
+            barChart.Append(CreateBarSeries(seriesList[(int)i].Name, categories, seriesList[(int)i].Values, i));
+        barChart.Append(new C.AxisId { Val = 1 });
+        barChart.Append(new C.AxisId { Val = 2 });
         return new C.Chart(
             new C.PlotArea(barChart, CreateCategoryAxis(1, 2), CreateValueAxis(2, 1)),
             new C.Legend(new C.LegendPosition { Val = C.LegendPositionValues.Bottom }),
@@ -1584,9 +1680,11 @@ class PptTool
         );
     }
 
-    C.Chart BuildPieChart(string title, string[] categories, double[] values)
+    C.Chart BuildPieChart(string title, string[] categories, List<(string Name, double[] Values)> seriesList)
     {
-        var pieChart = new C.PieChart(CreatePieSeries(title, categories, values, 0));
+        var pieChart = new C.PieChart();
+        for (uint i = 0; i < seriesList.Count; i++)
+            pieChart.Append(CreatePieSeries(seriesList[(int)i].Name, categories, seriesList[(int)i].Values, i));
         return new C.Chart(
             new C.PlotArea(pieChart),
             new C.Legend(new C.LegendPosition { Val = C.LegendPositionValues.Bottom }),
@@ -1594,14 +1692,15 @@ class PptTool
         );
     }
 
-    C.Chart BuildLineChart(string title, string[] categories, double[] values)
+    C.Chart BuildLineChart(string title, string[] categories, List<(string Name, double[] Values)> seriesList)
     {
         var lineChart = new C.LineChart(
-            new C.Grouping { Val = C.GroupingValues.Standard },
-            CreateLineSeries(title, categories, values, 0),
-            new C.AxisId { Val = 1 },
-            new C.AxisId { Val = 2 }
+            new C.Grouping { Val = C.GroupingValues.Standard }
         );
+        for (uint i = 0; i < seriesList.Count; i++)
+            lineChart.Append(CreateLineSeries(seriesList[(int)i].Name, categories, seriesList[(int)i].Values, i));
+        lineChart.Append(new C.AxisId { Val = 1 });
+        lineChart.Append(new C.AxisId { Val = 2 });
         return new C.Chart(
             new C.PlotArea(lineChart, CreateCategoryAxis(1, 2), CreateValueAxis(2, 1)),
             new C.Legend(new C.LegendPosition { Val = C.LegendPositionValues.Bottom }),
@@ -1609,14 +1708,15 @@ class PptTool
         );
     }
 
-    C.Chart BuildAreaChart(string title, string[] categories, double[] values)
+    C.Chart BuildAreaChart(string title, string[] categories, List<(string Name, double[] Values)> seriesList)
     {
         var areaChart = new C.AreaChart(
-            new C.Grouping { Val = C.GroupingValues.Standard },
-            CreateAreaSeries(title, categories, values, 0),
-            new C.AxisId { Val = 1 },
-            new C.AxisId { Val = 2 }
+            new C.Grouping { Val = C.GroupingValues.Standard }
         );
+        for (uint i = 0; i < seriesList.Count; i++)
+            areaChart.Append(CreateAreaSeries(seriesList[(int)i].Name, categories, seriesList[(int)i].Values, i));
+        areaChart.Append(new C.AxisId { Val = 1 });
+        areaChart.Append(new C.AxisId { Val = 2 });
         return new C.Chart(
             new C.PlotArea(areaChart, CreateCategoryAxis(1, 2), CreateValueAxis(2, 1)),
             new C.Legend(new C.LegendPosition { Val = C.LegendPositionValues.Bottom }),
@@ -1779,14 +1879,39 @@ class PptTool
     {
         var target = new TargetElement(new ShapeTarget { ShapeId = shapeId.ToString() });
 
+        // Detect auto-play prefix
+        bool autoPlay = animType.StartsWith("auto-");
+        if (autoPlay) animType = animType[5..];
+
+        // Detect exit prefix
+        bool isExit = animType.StartsWith("exit-");
+        if (isExit) animType = animType[5..];
+
+        StartConditionList CreateTrigger() => autoPlay
+            ? new StartConditionList(new Condition { Delay = "0" })
+            : new StartConditionList(new Condition { Event = TriggerEventValues.OnClick });
+
+        // Exit animations use opposite visibility
+        if (isExit)
+        {
+            return new SetBehavior(
+                new CommonBehavior(
+                    new CommonTimeNode(CreateTrigger())
+                    { Id = (uint)(200 + shapeId), Duration = "500", Fill = TimeNodeFillValues.Hold },
+                    target,
+                    new AttributeNameList(new AttributeName("style.visibility"))
+                ),
+                new ToVariantValue(new StringVariantValue { Val = "hidden" })
+            );
+        }
+
         switch (animType)
         {
             case "appear":
                 return new SetBehavior(
                     new CommonBehavior(
-                        new CommonTimeNode(
-                            new StartConditionList(new Condition { Event = TriggerEventValues.OnClick })
-                        ) { Id = (uint)(200 + shapeId), Duration = "1", Fill = TimeNodeFillValues.Hold },
+                        new CommonTimeNode(CreateTrigger())
+                        { Id = (uint)(200 + shapeId), Duration = "1", Fill = TimeNodeFillValues.Hold },
                         target,
                         new AttributeNameList(new AttributeName("style.visibility"))
                     ),
@@ -1795,21 +1920,50 @@ class PptTool
             case "flyin":
                 return new Animate(
                     new CommonBehavior(
-                        new CommonTimeNode(
-                            new StartConditionList(new Condition { Event = TriggerEventValues.OnClick })
-                        ) { Id = (uint)(200 + shapeId), Duration = "500", Fill = TimeNodeFillValues.Hold },
+                        new CommonTimeNode(CreateTrigger())
+                        { Id = (uint)(200 + shapeId), Duration = "500", Fill = TimeNodeFillValues.Hold },
                         target,
-                        new AttributeNameList(new AttributeName("ppt_x"))
+                        new AttributeNameList(new AttributeName("ppt_y"))
                     ),
                     new ToVariantValue(new StringVariantValue { Val = "0.5" })
+                );
+            case "zoom":
+                return new Animate(
+                    new CommonBehavior(
+                        new CommonTimeNode(CreateTrigger())
+                        { Id = (uint)(200 + shapeId), Duration = "500", Fill = TimeNodeFillValues.Hold },
+                        target,
+                        new AttributeNameList(new AttributeName("ppt_w"))
+                    ),
+                    new ToVariantValue(new StringVariantValue { Val = "1.0" })
+                );
+            case "pulse":
+            case "grow":
+                return new Animate(
+                    new CommonBehavior(
+                        new CommonTimeNode(CreateTrigger())
+                        { Id = (uint)(200 + shapeId), Duration = "300", Fill = TimeNodeFillValues.Hold },
+                        target,
+                        new AttributeNameList(new AttributeName("ppt_w"))
+                    ),
+                    new ToVariantValue(new StringVariantValue { Val = "1.2" })
+                );
+            case "shrink":
+                return new Animate(
+                    new CommonBehavior(
+                        new CommonTimeNode(CreateTrigger())
+                        { Id = (uint)(200 + shapeId), Duration = "300", Fill = TimeNodeFillValues.Hold },
+                        target,
+                        new AttributeNameList(new AttributeName("ppt_w"))
+                    ),
+                    new ToVariantValue(new StringVariantValue { Val = "0.8" })
                 );
             case "fade":
             default:
                 return new SetBehavior(
                     new CommonBehavior(
-                        new CommonTimeNode(
-                            new StartConditionList(new Condition { Event = TriggerEventValues.OnClick })
-                        ) { Id = (uint)(200 + shapeId), Duration = "1", Fill = TimeNodeFillValues.Hold },
+                        new CommonTimeNode(CreateTrigger())
+                        { Id = (uint)(200 + shapeId), Duration = "1", Fill = TimeNodeFillValues.Hold },
                         target,
                         new AttributeNameList(new AttributeName("style.visibility"))
                     ),

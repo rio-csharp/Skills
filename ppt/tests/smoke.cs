@@ -201,6 +201,30 @@ try
         Require(File.Exists(animPptx), "animation create should write a PPTX file");
     }, ref passed);
 
+    Pass("create with multi-series chart", () =>
+    {
+        var multiChartPptx = Path.Combine(testDir, "multi_chart.pptx");
+        var lines = "H1 Comparison\nCHART bar Title;A,B,C;Q1:10,20,30;Q2:15,25,35";
+        RunTool("create", "--output", multiChartPptx, "--content", lines, "--from-lines").RequireSuccess();
+        Require(File.Exists(multiChartPptx), "multi-series chart should write a PPTX file");
+    }, ref passed);
+
+    Pass("create with table styling", () =>
+    {
+        var tablePptx = Path.Combine(testDir, "table_styled.pptx");
+        var lines = "TABLE-BORDER #000000,2\nTABLE-ZEBRA\nTABLE-HEADER #D9E2F3\nTABLE A,B,C;1,2,3;4,5,6";
+        RunTool("create", "--output", tablePptx, "--content", lines, "--from-lines").RequireSuccess();
+        Require(File.Exists(tablePptx), "styled table should write a PPTX file");
+    }, ref passed);
+
+    Pass("create with hyperlink", () =>
+    {
+        var linkPptx = Path.Combine(testDir, "link.pptx");
+        var lines = "H1 Links\nLINK https://example.com Click here";
+        RunTool("create", "--output", linkPptx, "--content", lines, "--from-lines").RequireSuccess();
+        Require(File.Exists(linkPptx), "hyperlink create should write a PPTX file");
+    }, ref passed);
+
     Console.WriteLine($"PASS ppt smoke ({passed} checks)");
     return 0;
 }

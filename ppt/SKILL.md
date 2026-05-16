@@ -74,6 +74,11 @@ Each line must start with a command. Content follows after the first space.
 | `BR` | Empty line (paragraph break). **Use sparingly** — themes already provide paragraph spacing. |
 | `NEWSLIDE` | Start a new slide |
 | `TABLE row1col1,row1col2;row2col1,row2col2` | Table (comma = column, semicolon = row) |
+| `TABLE-BORDER #RRGGBB,N` | Set table border color and width (pt) for next table |
+| `TABLE-ZEBRA` | Enable zebra striping for next table |
+| `TABLE-NO-ZEBRA` | Disable zebra striping for next table |
+| `TABLE-HEADER #RRGGBB` | Set table header row color for next table |
+| `LINK url text` | Add clickable hyperlink text |
 | `IMG path[,width[,height]]` | Insert image. Width/height can be `mm` or `N%` of slide. Omit both for auto-fit. |
 
 ### Style State Commands
@@ -111,7 +116,7 @@ Each line must start with a command. Content follows after the first space.
 | `STROKE #RRGGBB,N` | Set stroke color and width (pt) for next shape |
 | `ROUND N` | Enable rounded corners for next rectangle (radius in pt, approximate) |
 | `CHART type data` | Insert chart. `type` = bar, column, pie, line, area. Data: `Title;Cat1,Cat2;Val1,Val2` |
-| `ANIMATE type` | Add entrance animation to last shape (fade, flyin, appear) |
+| `ANIMATE type` | Add animation to last shape. Entrance: `fade`, `flyin`, `appear`, `zoom`, `pulse`, `grow`, `shrink`. Exit: prefix with `exit-` (e.g. `exit-fade`). Auto-play: prefix with `auto-` (e.g. `auto-flyin`). |
 | `TRANSITION type` | Set slide transition effect (fade, push, wipe, split, etc.) |
 
 ### Layouts
