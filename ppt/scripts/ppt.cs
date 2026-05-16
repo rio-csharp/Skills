@@ -634,7 +634,8 @@ class PptTool
         "BULLET","NUMBER","HR","BR","TABLE","IMG","COLOR","SIZE","FONT","ALIGN","NEWSLIDE",
         "LAYOUT", "POS", "BGCOLOR", "BGIMAGE", "SHAPE", "FILL", "STROKE", "ROUND",
         "CHART", "ANIMATE", "TRANSITION", "LINK",
-        "TABLE-BORDER", "TABLE-ZEBRA", "TABLE-NO-ZEBRA", "TABLE-HEADER"
+        "TABLE-BORDER", "TABLE-ZEBRA", "TABLE-NO-ZEBRA", "TABLE-HEADER",
+        "ACTION", "COMMENT", "VIDEO", "AUDIO", "EMBED-FONT", "SMARTART"
     };
 
     string? GetLineCommand(string line)
@@ -756,6 +757,12 @@ class PptTool
                 case "TABLE-ZEBRA": _tableZebra = true; break;
                 case "TABLE-NO-ZEBRA": _tableZebra = false; break;
                 case "TABLE-HEADER": _tableHeaderColor = text.Trim(); break;
+                case "ACTION": AddAction(currentSlide, text); break;
+                case "COMMENT": AddComment(currentSlide, presPart, text); break;
+                case "VIDEO": AddVideo(currentSlide, presPart, text); break;
+                case "AUDIO": AddAudio(currentSlide, presPart, text); break;
+                case "EMBED-FONT": EmbedFont(presPart, text.Trim()); break;
+                case "SMARTART": AddSmartArt(currentSlide, text); break;
                 default:
                     AddParagraphToSlide(currentSlide, line);
                     break;
@@ -2004,6 +2011,437 @@ class PptTool
         slidePart.Slide!.Transition = transition;
     }
 
+    // ── Action Settings ─────────────────────────────────────────────────────
+
+    void AddAction(SlidePart slidePart, string text)
+    {
+        var parts = text.Split(' ', StringSplitOptions.TrimEntries);
+        if (parts.Length == 0) return;
+
+        var actionType = parts[0].ToLowerInvariant();
+        var shapeTree = slidePart.Slide!.CommonSlideData!.ShapeTree!;
+        var lastShape = shapeTree.Elements<Shape>().LastOrDefault();
+        if (lastShape == null) return;
+
+        var nvPr = lastShape.NonVisualShapeProperties;
+        if (nvPr == null) return;
+
+        A.HyperlinkOnClick hyperlink;
+        switch (actionType)
+        {
+            case "jump":
+                if (parts.Length < 2 || !int.TryParse(parts[1], out var slideNum)) return;
+                hyperlink = new A.HyperlinkOnClick { Action = $"ppaction://hlinksldjump?jumppage={slideNum - 1}" };
+                break;
+            case "next":
+                hyperlink = new A.HyperlinkOnClick { Action = "ppaction://hlinkshow?jump=nextslide" };
+                break;
+            case "prev":
+            case "previous":
+                hyperlink = new A.HyperlinkOnClick { Action = "ppaction://hlinkshow?jump=previousslide" };
+                break;
+            case "first":
+                hyperlink = new A.HyperlinkOnClick { Action = "ppaction://hlinkshow?jump=firstslide" };
+                break;
+            case "last":
+                hyperlink = new A.HyperlinkOnClick { Action = "ppaction://hlinkshow?jump=lastslide" };
+                break;
+            case "url":
+                if (parts.Length < 2) return;
+                try
+                {
+                    var uri = new Uri(parts[1], UriKind.Absolute);
+                    var rel = slidePart.AddHyperlinkRelationship(uri, true);
+                    hyperlink = new A.HyperlinkOnClick { Id = rel.Id };
+                }
+                catch { return; }
+                break;
+            default:
+                return;
+        }
+
+        if (nvPr.NonVisualDrawingProperties == null)
+            nvPr.NonVisualDrawingProperties = new NonVisualDrawingProperties();
+        // Remove existing hyperlink if any
+        var existing = nvPr.NonVisualDrawingProperties.Elements<A.HyperlinkOnClick>().FirstOrDefault();
+        if (existing != null) nvPr.NonVisualDrawingProperties.RemoveChild(existing);
+        nvPr.NonVisualDrawingProperties.Append(hyperlink);
+    }
+
+    // ── Comments ────────────────────────────────────────────────────────────
+
+    void AddComment(SlidePart slidePart, PresentationPart presPart, string text)
+    {
+        var commentText = text.Trim();
+        if (string.IsNullOrEmpty(commentText)) return;
+
+        // Ensure comment authors part exists
+        var authorsPart = presPart.CommentAuthorsPart ?? presPart.AddNewPart<CommentAuthorsPart>();
+        var authors = authorsPart.CommentAuthorList ?? new CommentAuthorList();
+        authorsPart.CommentAuthorList = authors;
+
+        // Find or create author
+        var authorId = 0;
+        var author = authors.Elements<CommentAuthor>().FirstOrDefault();
+        if (author == null)
+        {
+            author = new CommentAuthor
+            {
+                Id = 0,
+                Name = "User",
+                Initials = "U",
+                ColorIndex = 0
+            };
+            authors.Append(author);
+        }
+        else
+        {
+            authorId = (int)(author.Id?.Value ?? 0);
+        }
+
+        // Ensure slide comments part exists
+        var commentsPart = slidePart.SlideCommentsPart ?? slidePart.AddNewPart<SlideCommentsPart>();
+        var commentList = commentsPart.CommentList ?? new CommentList();
+        commentsPart.CommentList = commentList;
+
+        var commentId = (uint)(commentList.Elements<Comment>().Count() + 1);
+        var comment = new Comment
+        {
+            AuthorId = (uint)authorId,
+            DateTime = DateTime.Now,
+            Index = commentId
+        };
+        comment.Append(new DocumentFormat.OpenXml.Presentation.Text { Text = commentText });
+        commentList.Append(comment);
+    }
+
+    // ── Video ───────────────────────────────────────────────────────────────
+
+    void AddVideo(SlidePart slidePart, PresentationPart presPart, string text)
+    {
+        var parts = text.Split(',', StringSplitOptions.TrimEntries);
+        var videoPath = parts[0];
+        if (!File.Exists(videoPath))
+        {
+            Console.WriteLine($"Warning: video not found: {videoPath}");
+            return;
+        }
+
+        long cx = 8000000, cy = 4500000;
+        if (parts.Length > 1)
+        {
+            if (parts[1].EndsWith('%'))
+            {
+                if (float.TryParse(parts[1][..^1], out var pct))
+                    cx = (long)(pct / 100f * SlideWidth);
+            }
+            else if (float.TryParse(parts[1], out var mm))
+            {
+                cx = (long)(mm * 36000);
+            }
+        }
+        if (parts.Length > 2 && float.TryParse(parts[2], out var hmm))
+        {
+            cy = (long)(hmm * 36000);
+        }
+
+        try
+        {
+            var contentType = Path.GetExtension(videoPath).ToLowerInvariant() switch
+            {
+                ".mp4" => "video/mp4",
+                ".wmv" => "video/x-ms-wmv",
+                ".avi" => "video/x-msvideo",
+                ".mov" => "video/quicktime",
+                _ => "video/mp4"
+            };
+            var mediaDataPart = presPart.OpenXmlPackage.CreateMediaDataPart(contentType);
+            using (var fs = new FileStream(videoPath, FileMode.Open))
+                mediaDataPart.FeedData(fs);
+
+            var rel = slidePart.AddVideoReferenceRelationship(mediaDataPart);
+            var mediaRel = slidePart.AddMediaReferenceRelationship(mediaDataPart);
+
+            long vidX = _posX >= 0 ? _posX : 500000;
+            long vidY = _posY >= 0 ? _posY : 3000000;
+            _posX = _posY = _posW = _posH = -1;
+
+            var shapeTree = slidePart.Slide!.CommonSlideData!.ShapeTree!;
+            var picture = new Picture();
+            picture.NonVisualPictureProperties = new NonVisualPictureProperties(
+                new A.NonVisualDrawingProperties { Id = _shapeId++, Name = Path.GetFileName(videoPath) },
+                new A.NonVisualPictureDrawingProperties(),
+                new ApplicationNonVisualDrawingProperties()
+            );
+            picture.BlipFill = new BlipFill(
+                new A.Blip { Embed = rel.Id },
+                new A.Stretch(new A.FillRectangle())
+            );
+            picture.ShapeProperties = new ShapeProperties(new A.Transform2D(
+                new A.Offset { X = vidX, Y = vidY },
+                new A.Extents { Cx = cx, Cy = cy }
+            ));
+            shapeTree.Append(picture);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: could not add video {videoPath}: {ex.Message}");
+        }
+    }
+
+    // ── Audio ───────────────────────────────────────────────────────────────
+
+    void AddAudio(SlidePart slidePart, PresentationPart presPart, string text)
+    {
+        var audioPath = text.Trim();
+        if (!File.Exists(audioPath))
+        {
+            Console.WriteLine($"Warning: audio not found: {audioPath}");
+            return;
+        }
+
+        try
+        {
+            var contentType = Path.GetExtension(audioPath).ToLowerInvariant() switch
+            {
+                ".mp3" => "audio/mpeg",
+                ".wav" => "audio/wav",
+                ".wma" => "audio/x-ms-wma",
+                ".m4a" => "audio/mp4",
+                _ => "audio/mpeg"
+            };
+            var mediaDataPart = presPart.OpenXmlPackage.CreateMediaDataPart(contentType);
+            using (var fs = new FileStream(audioPath, FileMode.Open))
+                mediaDataPart.FeedData(fs);
+
+            var rel = slidePart.AddAudioReferenceRelationship(mediaDataPart);
+            var mediaRel = slidePart.AddMediaReferenceRelationship(mediaDataPart);
+
+            var shapeTree = slidePart.Slide!.CommonSlideData!.ShapeTree!;
+            var picture = new Picture();
+            picture.NonVisualPictureProperties = new NonVisualPictureProperties(
+                new A.NonVisualDrawingProperties { Id = _shapeId++, Name = Path.GetFileName(audioPath) },
+                new A.NonVisualPictureDrawingProperties(),
+                new ApplicationNonVisualDrawingProperties()
+            );
+            picture.BlipFill = new BlipFill(
+                new A.Blip { Embed = rel.Id },
+                new A.Stretch(new A.FillRectangle())
+            );
+            picture.ShapeProperties = new ShapeProperties(new A.Transform2D(
+                new A.Offset { X = 500000, Y = 3000000 },
+                new A.Extents { Cx = 500000, Cy = 500000 }
+            ));
+            shapeTree.Append(picture);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: could not add audio {audioPath}: {ex.Message}");
+        }
+    }
+
+    // ── Font Embedding ──────────────────────────────────────────────────────
+
+    void EmbedFont(PresentationPart presPart, string fontPath)
+    {
+        if (!File.Exists(fontPath))
+        {
+            Console.WriteLine($"Warning: font file not found: {fontPath}");
+            return;
+        }
+
+        try
+        {
+            var fontPart = presPart.AddNewPart<FontPart>("application/x-font-ttf");
+            using (var fs = new FileStream(fontPath, FileMode.Open))
+                fontPart.FeedData(fs);
+
+            Console.WriteLine($"Embedded font: {Path.GetFileNameWithoutExtension(fontPath)} (ID: {presPart.GetIdOfPart(fontPart)})");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: could not embed font {fontPath}: {ex.Message}");
+        }
+    }
+
+    // ── SmartArt (Simplified) ───────────────────────────────────────────────
+
+    void AddSmartArt(SlidePart slidePart, string text)
+    {
+        var parts = text.Split(' ', StringSplitOptions.TrimEntries);
+        if (parts.Length < 2) return;
+
+        var artType = parts[0].ToLowerInvariant();
+        var dataStr = string.Join(" ", parts.Skip(1));
+
+        switch (artType)
+        {
+            case "process":
+                BuildProcessSmartArt(slidePart, dataStr.Split(',', StringSplitOptions.TrimEntries));
+                break;
+            case "cycle":
+                BuildCycleSmartArt(slidePart, dataStr.Split(',', StringSplitOptions.TrimEntries));
+                break;
+            case "hierarchy":
+                BuildHierarchySmartArt(slidePart, dataStr);
+                break;
+        }
+    }
+
+    void BuildProcessSmartArt(SlidePart slidePart, string[] items)
+    {
+        var shapeTree = slidePart.Slide!.CommonSlideData!.ShapeTree!;
+        int count = items.Length;
+        if (count == 0) return;
+
+        long boxW = Math.Min(3000000, (SlideWidth - 1000000) / count);
+        long boxH = 1500000;
+        long startX = (SlideWidth - boxW * count) / 2;
+        long startY = 2500000;
+
+        for (int i = 0; i < count; i++)
+        {
+            long x = startX + i * boxW;
+            // Box
+            var box = new Shape();
+            box.NonVisualShapeProperties = new NonVisualShapeProperties(
+                new A.NonVisualDrawingProperties { Id = _shapeId++, Name = $"ProcessBox{i}" },
+                new A.NonVisualShapeDrawingProperties(new A.ShapeLocks()),
+                new ApplicationNonVisualDrawingProperties()
+            );
+            var spPr = new ShapeProperties();
+            spPr.Transform2D = new A.Transform2D(
+                new A.Offset { X = x, Y = startY },
+                new A.Extents { Cx = boxW - 100000, Cy = boxH }
+            );
+            spPr.Append(new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Round2SameRectangle });
+            spPr.Append(new A.SolidFill(new A.RgbColorModelHex { Val = _theme.HeadingColor }));
+            box.ShapeProperties = spPr;
+            box.TextBody = new TextBody(
+                new A.BodyProperties { Wrap = A.TextWrappingValues.Square, Anchor = A.TextAnchoringTypeValues.Center },
+                new A.ListStyle(),
+                new A.Paragraph(
+                    MakeRun(items[i], 1800, true, "FFFFFF")
+                ) { ParagraphProperties = new A.ParagraphProperties { Alignment = A.TextAlignmentTypeValues.Center } }
+            );
+            shapeTree.Append(box);
+
+            // Arrow between boxes
+            if (i < count - 1)
+            {
+                var arrow = new Shape();
+                arrow.NonVisualShapeProperties = new NonVisualShapeProperties(
+                    new A.NonVisualDrawingProperties { Id = _shapeId++, Name = $"Arrow{i}" },
+                    new A.NonVisualShapeDrawingProperties(new A.ShapeLocks()),
+                    new ApplicationNonVisualDrawingProperties()
+                );
+                var aspPr = new ShapeProperties();
+                aspPr.Transform2D = new A.Transform2D(
+                    new A.Offset { X = x + boxW - 100000, Y = startY + boxH / 2 - 50000 },
+                    new A.Extents { Cx = 100000, Cy = 100000 }
+                );
+                aspPr.Append(new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.RightArrow });
+                aspPr.Append(new A.SolidFill(new A.RgbColorModelHex { Val = "666666" }));
+                arrow.ShapeProperties = aspPr;
+                shapeTree.Append(arrow);
+            }
+        }
+    }
+
+    void BuildCycleSmartArt(SlidePart slidePart, string[] items)
+    {
+        var shapeTree = slidePart.Slide!.CommonSlideData!.ShapeTree!;
+        int count = items.Length;
+        if (count == 0) return;
+
+        long centerX = SlideWidth / 2;
+        long centerY = SlideHeight / 2;
+        long radius = 2800000;
+        long boxSize = 1800000;
+
+        for (int i = 0; i < count; i++)
+        {
+            double angle = 2 * Math.PI * i / count - Math.PI / 2;
+            long x = centerX + (long)(radius * Math.Cos(angle)) - boxSize / 2;
+            long y = centerY + (long)(radius * Math.Sin(angle)) - boxSize / 2;
+
+            var box = new Shape();
+            box.NonVisualShapeProperties = new NonVisualShapeProperties(
+                new A.NonVisualDrawingProperties { Id = _shapeId++, Name = $"CycleBox{i}" },
+                new A.NonVisualShapeDrawingProperties(new A.ShapeLocks()),
+                new ApplicationNonVisualDrawingProperties()
+            );
+            var spPr = new ShapeProperties();
+            spPr.Transform2D = new A.Transform2D(
+                new A.Offset { X = x, Y = y },
+                new A.Extents { Cx = boxSize, Cy = boxSize }
+            );
+            spPr.Append(new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Ellipse });
+            var colors = new[] { "2E74B5", "00B4D8", "28A745", "FFC107", "DC3545", "6F42C1" };
+            spPr.Append(new A.SolidFill(new A.RgbColorModelHex { Val = colors[i % colors.Length] }));
+            box.ShapeProperties = spPr;
+            box.TextBody = new TextBody(
+                new A.BodyProperties { Wrap = A.TextWrappingValues.Square, Anchor = A.TextAnchoringTypeValues.Center },
+                new A.ListStyle(),
+                new A.Paragraph(
+                    MakeRun(items[i], 1600, true, "FFFFFF")
+                ) { ParagraphProperties = new A.ParagraphProperties { Alignment = A.TextAlignmentTypeValues.Center } }
+            );
+            shapeTree.Append(box);
+        }
+    }
+
+    void BuildHierarchySmartArt(SlidePart slidePart, string text)
+    {
+        var shapeTree = slidePart.Slide!.CommonSlideData!.ShapeTree!;
+        var levels = text.Split(';', StringSplitOptions.TrimEntries);
+        if (levels.Length == 0) return;
+
+        long boxW = 2500000;
+        long boxH = 800000;
+        long gapY = 400000;
+        long startY = 1500000;
+
+        for (int level = 0; level < levels.Length; level++)
+        {
+            var items = levels[level].Split(',', StringSplitOptions.TrimEntries);
+            int count = items.Length;
+            if (count == 0) continue;
+
+            long totalW = count * boxW + (count - 1) * 200000;
+            long startX = (SlideWidth - totalW) / 2;
+            long y = startY + level * (boxH + gapY);
+
+            for (int i = 0; i < count; i++)
+            {
+                long x = startX + i * (boxW + 200000);
+                var box = new Shape();
+                box.NonVisualShapeProperties = new NonVisualShapeProperties(
+                    new A.NonVisualDrawingProperties { Id = _shapeId++, Name = $"Hierarchy{level}_{i}" },
+                    new A.NonVisualShapeDrawingProperties(new A.ShapeLocks()),
+                    new ApplicationNonVisualDrawingProperties()
+                );
+                var spPr = new ShapeProperties();
+                spPr.Transform2D = new A.Transform2D(
+                    new A.Offset { X = x, Y = y },
+                    new A.Extents { Cx = boxW, Cy = boxH }
+                );
+                spPr.Append(new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Rectangle });
+                var colors = new[] { "1F4E79", "2E74B5", "5B9BD5" };
+                spPr.Append(new A.SolidFill(new A.RgbColorModelHex { Val = colors[level % colors.Length] }));
+                box.ShapeProperties = spPr;
+                box.TextBody = new TextBody(
+                    new A.BodyProperties { Wrap = A.TextWrappingValues.Square, Anchor = A.TextAnchoringTypeValues.Center },
+                    new A.ListStyle(),
+                    new A.Paragraph(
+                        MakeRun(items[i], 1600, true, "FFFFFF")
+                    ) { ParagraphProperties = new A.ParagraphProperties { Alignment = A.TextAlignmentTypeValues.Center } }
+                );
+                shapeTree.Append(box);
+            }
+        }
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     string? Arg(string longForm, string shortForm, string[] args)
@@ -2028,6 +2466,18 @@ class PptTool
                 return true;
         }
         return false;
+    }
+
+    A.Run MakeRun(string text, int fontSize, bool bold, string color)
+    {
+        var rPr = new A.RunProperties
+        {
+            Language = "en-US",
+            FontSize = fontSize,
+            Bold = bold
+        };
+        rPr.Append(new A.SolidFill(new A.RgbColorModelHex { Val = color }));
+        return new A.Run(new A.Text(text)) { RunProperties = rPr };
     }
 
     string? Positional(string[] args)
